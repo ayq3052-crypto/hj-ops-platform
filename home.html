@@ -321,6 +321,7 @@
         </nav>
       </section>
     </main>
+    <script src="./db-client.js?v=20260628-db-2"></script>
     <script>
       const authKey = "hj-home-auth-v1";
       const unlockKey = "hj-home-unlock-until-v1";
@@ -393,6 +394,7 @@
         localStorage.setItem(unlockKey, String(Date.now() + unlockDurationMs));
         sessionStorage.setItem(legacySessionKey, "unlocked");
         setLocked(false);
+        setNote(formatRemaining());
         const target = nextUrl();
         if (target) window.location.assign(target);
       };
@@ -413,6 +415,8 @@
         else delete loginNote.dataset.tone;
       };
 
+      const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+
       const syncMode = () => {
         const auth = savedAuth();
         loginButton.textContent = auth ? "登入" : "設定帳號密碼";
@@ -430,6 +434,7 @@
       const lockHome = () => {
         localStorage.removeItem(unlockKey);
         sessionStorage.removeItem(legacySessionKey);
+        window.HJ_DB?.signOut?.();
         setLocked(true);
         syncMode();
         accountInput.focus();
@@ -443,11 +448,16 @@
           setNote("請輸入帳號與密碼。", "error");
           return;
         }
+        if (!validEmail(account)) {
+          setNote("帳號請使用 Email，這樣資料庫才認得這個使用者。", "error");
+          return;
+        }
 
         loginButton.disabled = true;
         try {
           const auth = savedAuth();
           if (!auth) {
+            await window.HJ_DB.signInOrSignUp(account, password, { preferSignUp: true });
             const salt = createSalt();
             const hash = await hashCredential(account, password, salt);
             localStorage.setItem(authKey, JSON.stringify({ account, salt, hash }));
@@ -457,10 +467,13 @@
 
           const hash = await hashCredential(account, password, auth.salt);
           if (account === auth.account && hash === auth.hash) {
+            await window.HJ_DB.signInOrSignUp(account, password);
             unlockHome();
           } else {
             setNote("帳號或密碼不正確。", "error");
           }
+        } catch (error) {
+          setNote(`登入失敗：${error.message || "請稍後再試"}`, "error");
         } finally {
           loginButton.disabled = false;
         }

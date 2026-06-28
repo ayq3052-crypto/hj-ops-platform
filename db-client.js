@@ -1,0 +1,570 @@
+(() => {
+  const supabaseUrl = "https://khpgrfpnvgzkfjmxhuny.supabase.co";
+  const supabaseKey = "sb_publishable_q13oqBYsvYnhkuuZ79kA5g_dt9YaujM";
+  const supabaseCdn = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+  let clientPromise = null;
+  let platformDataPromise = null;
+  let branchesPromise = null;
+
+  const venueLabels = {
+    taichung: "台中館",
+    huanrui: "環瑞館",
+  };
+
+  const monthLabels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+  const moneyText = (value, suffix = "") => {
+    if (value === null || value === undefined || value === "") return "";
+    const number = Number(value);
+    if (!Number.isFinite(number)) return String(value);
+    return `${number % 1 === 0 ? String(Math.trunc(number)) : String(number)}${suffix}`;
+  };
+
+  const textOrEmpty = (value) => String(value ?? "").trim();
+
+  const isoToRoc = (value) => {
+    if (!value) return "";
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return "";
+    return `${Number(match[1]) - 1911}/${Number(match[2])}/${Number(match[3])}`;
+  };
+
+  const rocToIso = (value) => {
+    const match = String(value || "").match(/(\d{2,3})[/.年-](\d{1,2})[/.月-](\d{1,2})/);
+    if (!match) return null;
+    return `${Number(match[1]) + 1911}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
+  };
+
+  const numericMoney = (value) => {
+    const match = String(value ?? "").replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+    return match ? Number(match[0]) : null;
+  };
+
+  const normalizeCycle = (value) => {
+    const text = String(value || "").trim().toUpperCase();
+    if (!text) return null;
+    if (["M", "3M", "6M", "Y", "2Y", "3Y"].includes(text)) return text;
+    return "custom";
+  };
+
+  const serviceTypeFromText = (...parts) => {
+    const text = parts.filter(Boolean).join(" ");
+    if (/辦公室/.test(text)) return "office";
+    if (/自由座|共享座位|共享辦公室/.test(text)) return "seat";
+    if (/會議室/.test(text)) return "meeting_room";
+    if (/公司登記|代辦公司/.test(text)) return "company_registration";
+    if (/信件/.test(text)) return "mail";
+    if (/營登|營業登記|行號|小規模/.test(text)) return "registration";
+    return "other";
+  };
+
+  const itemFromServiceType = (serviceType) => ({
+    registration: "營登",
+    office: "辦公室",
+    seat: "自由座",
+    meeting_room: "會議室",
+    company_registration: "公司登記",
+    mail: "信件",
+    other: "其他",
+  })[serviceType] || "其他";
+
+  const monthNumber = (label) => {
+    const number = Number(String(label || "").replace(/[^\d]/g, ""));
+    return number >= 1 && number <= 12 ? number : 6;
+  };
+
+  const monthLabel = (number) => monthLabels[Number(number) - 1] || "6月";
+
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    if (document.querySelector(`script[data-hj-src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = src;
+    script.defer = false;
+    script.dataset.hjSrc = src;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error(`無法載入 ${src}`));
+    document.head.appendChild(script);
+  });
+
+  const loadSupabase = async () => {
+    if (window.supabase?.createClient) return window.supabase;
+    await loadScript(supabaseCdn);
+    if (!window.supabase?.createClient) throw new Error("Supabase 載入失敗");
+    return window.supabase;
+  };
+
+  const getClient = async () => {
+    if (!clientPromise) {
+      clientPromise = loadSupabase().then((lib) => lib.createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storageKey: "hj-supabase-auth-v1",
+        },
+      }));
+    }
+    return clientPromise;
+  };
+
+  const getSession = async () => {
+    const client = await getClient();
+    const { data, error } = await client.auth.getSession();
+    if (error) throw error;
+    return data.session;
+  };
+
+  const ensureSession = async () => {
+    const session = await getSession();
+    if (!session) {
+      const next = encodeURIComponent(window.location.href);
+      window.location.replace(`./home.html?next=${next}`);
+      return null;
+    }
+    return session;
+  };
+
+  const signInOrSignUp = async (email, password, options = {}) => {
+    const client = await getClient();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const preferSignUp = Boolean(options.preferSignUp);
+    if (!preferSignUp) {
+      const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+      if (!signInError && signInData.session) return signInData.session;
+    }
+    
+    const { data: signUpData, error: signUpError } = await client.auth.signUp({
+      email: normalizedEmail,
+      password,
+    });
+    if (signUpError && !/already registered|already exists/i.test(signUpError.message || "")) throw signUpError;
+    if (signUpData.session) return signUpData.session;
+    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+    if (signInError) throw signInError;
+    return signInData.session;
+  };
+
+  const signOut = async () => {
+    const client = await getClient();
+    await client.auth.signOut();
+  };
+
+  const queryAll = async (table, select = "*") => {
+    const client = await getClient();
+    const { data, error } = await client.from(table).select(select);
+    if (error) throw error;
+    return data || [];
+  };
+
+  const getBranches = async () => {
+    if (!branchesPromise) {
+      branchesPromise = queryAll("branches", "id,code,name").then((rows) => ({
+        list: rows,
+        byCode: Object.fromEntries(rows.map((row) => [row.code, row])),
+        byId: Object.fromEntries(rows.map((row) => [row.id, row])),
+      }));
+    }
+    return branchesPromise;
+  };
+
+  const customerToCrmRow = (row, index) => ({
+    id: textOrEmpty(row.customer_no),
+    name: textOrEmpty(row.customer_name),
+    company: textOrEmpty(row.company_name),
+    category: "",
+    item: itemFromServiceType(row.service_type),
+    cycle: textOrEmpty(row.payment_cycle),
+    start: isoToRoc(row.contract_start),
+    end: isoToRoc(row.contract_end),
+    mark: "",
+    payDay: row.payment_day ? String(row.payment_day) : "",
+    amount: moneyText(row.monthly_amount, row.monthly_amount ? "/m" : ""),
+    industry: "",
+    signedAt: "",
+    deposit: moneyText(row.deposit_amount),
+    coNumber: textOrEmpty(row.company_tax_id),
+    birthday: isoToRoc(row.birthday),
+    address: textOrEmpty(row.address),
+    phone: textOrEmpty(row.phone),
+    idNumber: textOrEmpty(row.identity_number),
+    locker: "",
+    mail: textOrEmpty(row.email),
+    notes: textOrEmpty(row.notes),
+    folder: row.crm_status === "ended" ? "ended" : "active",
+    venue: row.branch_code,
+    sourceFormat: "db",
+    uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
+    contractTerm: "",
+  });
+
+  const buildCrmSource = (customers) => {
+    const venues = {};
+    Object.keys(venueLabels).forEach((venue) => {
+      const rows = customers
+        .filter((row) => row.branch_code === venue)
+        .sort((a, b) => String(a.customer_no).localeCompare(String(b.customer_no), "zh-Hant", { numeric: true }))
+        .map(customerToCrmRow);
+      venues[venue] = { activeYear: "2026", years: { 2026: rows } };
+    });
+    return {
+      generatedAt: new Date().toISOString(),
+      activeVenue: "taichung",
+      sources: {
+        taichung: {
+          label: "台中館",
+          sourceLabel: "Supabase 正式資料庫",
+          sourceLink: supabaseUrl,
+          idMode: "number",
+        },
+        huanrui: {
+          label: "環瑞館",
+          sourceLabel: "Supabase 正式資料庫",
+          sourceLink: supabaseUrl,
+          idMode: "v",
+        },
+      },
+      venues,
+    };
+  };
+
+  const paymentDbRowToLegacy = (row) => {
+    const snapshot = row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
+    return {
+      ...snapshot,
+      section: textOrEmpty(row.section || snapshot.section || "待確認"),
+      id: textOrEmpty(row.customer_no || snapshot.id),
+      name: textOrEmpty(row.customer_name || snapshot.name),
+      company: textOrEmpty(row.company_name || snapshot.company),
+      cycle: textOrEmpty(row.payment_cycle || snapshot.cycle),
+      price: textOrEmpty(snapshot.price || moneyText(row.amount_due)),
+      paidAmount: textOrEmpty(snapshot.paidAmount || moneyText(row.amount_paid)),
+      invoice: textOrEmpty(row.invoice_number || snapshot.invoice),
+      note: textOrEmpty(row.memo || snapshot.note),
+    };
+  };
+
+  const buildPaymentGlobals = (paymentRows) => {
+    const imported = { taichung: {}, huanrui: {} };
+    let currentRows = [];
+    paymentRows
+      .slice()
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+      .forEach((row) => {
+        const venue = row.branch_code;
+        const label = monthLabel(row.month);
+        const legacy = paymentDbRowToLegacy(row);
+        if (venue === "taichung" && Number(row.year) === 2026 && Number(row.month) === 6) {
+          currentRows.push(legacy);
+          return;
+        }
+        if (!imported[venue]) imported[venue] = {};
+        if (!imported[venue][label]) imported[venue][label] = [];
+        imported[venue][label].push(legacy);
+      });
+    return { imported, currentRows };
+  };
+
+  const draftDbRowToLegacy = (row) => {
+    const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const sourceMonth = metadata.source_month || (row.scheduled_for ? monthLabel(new Date(row.scheduled_for).getMonth() + 1) : "6月");
+    const sourceId = metadata.source_id || row.id;
+    const label = String(row.title || "").split(" / ").pop() || "訊息草稿";
+    return {
+      id: sourceId,
+      venue: row.branch_code,
+      month: sourceMonth,
+      year: metadata.source_year || 2026,
+      status: metadata.source_status || "today",
+      paymentRefs: metadata.payment_refs || [{ venue: row.branch_code, month: sourceMonth, id: row.customer_no }],
+      kind: row.draft_type === "renewal" ? "續約" : "繳費追蹤",
+      title: row.title || [row.customer_no, row.company_name || row.customer_name].filter(Boolean).join(" "),
+      subtitle: row.company_name || row.customer_name || "",
+      due: metadata.source_due || "",
+      amount: metadata.source_amount || "",
+      messages: [{ label, body: row.body || "" }],
+    };
+  };
+
+  const loadPlatformData = async () => {
+    if (!platformDataPromise) {
+      platformDataPromise = (async () => {
+        await ensureSession();
+        const [customers, paymentRows, drafts] = await Promise.all([
+          queryAll("v_customers_current"),
+          queryAll("v_payment_month_table"),
+          queryAll("v_message_draft_queue"),
+        ]);
+        const crmSource = buildCrmSource(customers);
+        const paymentGlobals = buildPaymentGlobals(paymentRows);
+        return {
+          crmSource,
+          paymentImported: paymentGlobals.imported,
+          paymentCurrent: paymentGlobals.currentRows,
+          draftItems: drafts.map(draftDbRowToLegacy),
+          counts: {
+            customers: customers.length,
+            paymentRows: paymentRows.length,
+            drafts: drafts.length,
+          },
+        };
+      })();
+    }
+    return platformDataPromise;
+  };
+
+  const applyPlatformGlobals = async () => {
+    const data = await loadPlatformData();
+    window.HJ_CRM_SOURCE_DATA = data.crmSource;
+    window.hjCrmSourceData = data.crmSource;
+    window.hjImportedPaymentData = data.paymentImported;
+    window.hjDefaultPaymentRows = data.paymentCurrent;
+    window.hjFutureDraftItems = data.draftItems;
+    return data;
+  };
+
+  const customerPayloadFromCrmRow = (row, branches) => {
+    const branch = branches.byCode[row.venue || "taichung"];
+    if (!branch || !textOrEmpty(row.id)) return null;
+    return {
+      branch_id: branch.id,
+      customer_no: textOrEmpty(row.id),
+      legacy_no: textOrEmpty(row.uid) || null,
+      customer_name: textOrEmpty(row.name) || null,
+      company_name: textOrEmpty(row.company) || null,
+      company_tax_id: /^\d{8}$/.test(textOrEmpty(row.coNumber)) ? textOrEmpty(row.coNumber) : null,
+      identity_number: textOrEmpty(row.idNumber) || null,
+      birthday: rocToIso(row.birthday),
+      phone: textOrEmpty(row.phone) || null,
+      email: textOrEmpty(row.mail) || null,
+      address: textOrEmpty(row.address) || null,
+      service_type: serviceTypeFromText(row.item, row.category),
+      payment_cycle: normalizeCycle(row.cycle),
+      monthly_amount: numericMoney(row.amount),
+      deposit_amount: numericMoney(row.deposit),
+      contract_start: rocToIso(row.start),
+      contract_end: rocToIso(row.end),
+      payment_day: Number(row.payDay) || null,
+      crm_status: row.folder === "ended" ? "ended" : "active",
+      source_system: "web_crm",
+      source_row_key: textOrEmpty(row.uid) || null,
+      source_snapshot: row,
+      notes: textOrEmpty(row.notes) || null,
+    };
+  };
+
+  const syncCrmData = async (crmData) => {
+    const client = await getClient();
+    const branches = await getBranches();
+    const seen = new Map();
+    Object.values(crmData?.venues || {}).forEach((venueData) => {
+      Object.values(venueData.years || {}).forEach((rows) => {
+        (rows || []).forEach((row) => {
+          const payload = customerPayloadFromCrmRow(row, branches);
+          if (payload) seen.set(`${payload.branch_id}|${payload.customer_no}`, payload);
+        });
+      });
+    });
+    const rows = Array.from(seen.values());
+    if (!rows.length) return;
+    const { error } = await client.from("customers").upsert(rows, { onConflict: "branch_id,customer_no" });
+    if (error) throw error;
+  };
+
+  const parsePaymentStorageKey = (key) => {
+    if (key === "hjPaymentRows202606TaichungV1") return { venue: "taichung", year: 2026, month: "6月" };
+    const match = String(key || "").match(/^hjPaymentRows(\d{4})_(taichung|huanrui)_(\d{1,2}月)_v1$/);
+    if (!match) return null;
+    return { year: Number(match[1]), venue: match[2], month: match[3] };
+  };
+
+  const paymentPayloadFromLegacy = (row, context, branches, customersByNo, index) => {
+    const branch = branches.byCode[context.venue];
+    if (!branch) return null;
+    const customerNo = textOrEmpty(row.id);
+    const customer = customerNo ? customersByNo.get(customerNo) : null;
+    return {
+      branch_id: branch.id,
+      customer_id: customer?.id || null,
+      year: Number(context.year),
+      month: monthNumber(context.month),
+      section: textOrEmpty(row.section) || "待確認",
+      sort_order: index,
+      customer_no: customerNo || null,
+      customer_name: textOrEmpty(row.name) || null,
+      company_name: textOrEmpty(row.company) || null,
+      service_type: serviceTypeFromText(row.section, row.note),
+      payment_cycle: normalizeCycle(row.cycle),
+      amount_due: numericMoney(row.paidAmount) || numericMoney(row.price),
+      amount_paid: numericMoney(row.paidAmount),
+      invoice_status: /✔|V|已開|開立/.test(String(row.invoice || "")) ? "issued" : "pending",
+      invoice_number: textOrEmpty(row.invoice) || null,
+      row_status: numericMoney(row.paidAmount) ? "paid" : row.manualStatus === "nonbillable" ? "ignored" : "open",
+      reminder_state: /已通知|已貼/.test(String(row.note || "")) ? "posted_waiting" : "none",
+      memo: textOrEmpty(row.note) || null,
+      source_system: "manual",
+      source_snapshot: row,
+      metadata: {
+        source_month_label: context.month,
+        start: row.start || null,
+        end: row.end || null,
+        price: row.price || null,
+        manual_status: row.manualStatus || null,
+      },
+    };
+  };
+
+  const syncPaymentRows = async (key, rows) => {
+    const context = parsePaymentStorageKey(key);
+    if (!context || !Array.isArray(rows)) return;
+    const client = await getClient();
+    const branches = await getBranches();
+    const branch = branches.byCode[context.venue];
+    if (!branch) return;
+    const { data: customers, error: customersError } = await client
+      .from("customers")
+      .select("id,customer_no")
+      .eq("branch_id", branch.id);
+    if (customersError) throw customersError;
+    const customersByNo = new Map((customers || []).map((customer) => [textOrEmpty(customer.customer_no), customer]));
+    const month = monthNumber(context.month);
+    const deleteResult = await client
+      .from("payment_month_rows")
+      .delete()
+      .eq("branch_id", branch.id)
+      .eq("year", Number(context.year))
+      .eq("month", month);
+    if (deleteResult.error) throw deleteResult.error;
+    const payloads = rows.map((row, index) => paymentPayloadFromLegacy(row, context, branches, customersByNo, index)).filter(Boolean);
+    if (!payloads.length) return;
+    const { error } = await client.from("payment_month_rows").insert(payloads);
+    if (error) throw error;
+  };
+
+  const syncDraftEdits = async (edits) => {
+    if (!edits || typeof edits !== "object") return;
+    const client = await getClient();
+    const branches = await getBranches();
+    const { data, error } = await client.from("message_drafts").select("id,metadata");
+    if (error) throw error;
+    const updates = [];
+    const inserts = [];
+    Object.entries(edits).forEach(([key, body]) => {
+      const [sourceId, indexText] = key.split("::");
+      const messageIndex = Number(indexText || 0);
+      const match = (data || []).find((row) => row.metadata?.source_id === sourceId && Number(row.metadata?.source_message_index || 0) === messageIndex);
+      if (match) updates.push({ id: match.id, body: String(body) });
+      else {
+        const parsed = parseAutoDraftSourceId(sourceId);
+        const branch = parsed ? branches.byCode[parsed.venue] : null;
+        if (branch) {
+          inserts.push({
+            branch_id: branch.id,
+            channel: "line",
+            draft_type: "payment_reminder",
+            title: `自動草稿 ${parsed.customerNo || sourceId}`,
+            body: String(body),
+            status: "draft",
+            requires_human_confirmation: true,
+            metadata: {
+              source_id: sourceId,
+              source_message_index: messageIndex,
+              source_status: "today",
+              source_year: parsed.year,
+              source_month: `${parsed.month}月`,
+              payment_refs: [{ venue: parsed.venue, year: parsed.year, month: `${parsed.month}月`, id: parsed.customerNo }],
+            },
+          });
+        }
+      }
+    });
+    for (const update of updates) {
+      const { error: updateError } = await client.from("message_drafts").update({ body: update.body }).eq("id", update.id);
+      if (updateError) throw updateError;
+    }
+    if (inserts.length) {
+      const { error: insertError } = await client.from("message_drafts").insert(inserts);
+      if (insertError) throw insertError;
+    }
+  };
+
+  const parseAutoDraftSourceId = (sourceId) => {
+    const match = String(sourceId || "").match(/^auto-(\d{4})-(taichung|huanrui)-(\d{1,2})-([^-]+)/);
+    if (!match) return null;
+    return {
+      year: Number(match[1]),
+      venue: match[2],
+      month: Number(match[3]),
+      customerNo: match[4],
+    };
+  };
+
+  const installLocalStorageSync = () => {
+    if (window.__hjDbLocalStorageSyncInstalled) return;
+    window.__hjDbLocalStorageSyncInstalled = true;
+    const originalSetItem = Storage.prototype.setItem;
+    const queue = new Map();
+    let timer = null;
+
+    const flush = async () => {
+      const entries = Array.from(queue.entries());
+      queue.clear();
+      for (const [key, value] of entries) {
+        try {
+          const parsed = JSON.parse(value);
+          if (key === "hj-crm-clean-v5-data-repair") await syncCrmData(parsed);
+          else if (parsePaymentStorageKey(key)) await syncPaymentRows(key, parsed);
+          else if (key === "hjDraftMessageEditsV1") await syncDraftEdits(parsed);
+        } catch (error) {
+          console.warn("DB sync failed", key, error);
+        }
+      }
+    };
+
+    Storage.prototype.setItem = function setItemWithDbSync(key, value) {
+      originalSetItem.call(this, key, value);
+      if (this !== localStorage) return;
+      if (key === "hj-crm-clean-v5-data-repair" || parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1") {
+        queue.set(key, value);
+        window.clearTimeout(timer);
+        timer = window.setTimeout(flush, 700);
+      }
+    };
+  };
+
+  const clearLegacyLocalDataForDb = () => {
+    const removeKeys = [];
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index) || "";
+      if (
+        key === "hj-crm-clean-v5-data-repair" ||
+        key === "hj-crm-payment-bridge-v1" ||
+        key === "setItem" ||
+        /^hjPaymentRows/.test(key)
+      ) {
+        removeKeys.push(key);
+      }
+    }
+    removeKeys.forEach((key) => localStorage.removeItem(key));
+  };
+
+  window.HJ_DB = {
+    getClient,
+    getSession,
+    ensureSession,
+    signInOrSignUp,
+    signOut,
+    loadPlatformData,
+    applyPlatformGlobals,
+    installLocalStorageSync,
+    clearLegacyLocalDataForDb,
+  };
+})();
