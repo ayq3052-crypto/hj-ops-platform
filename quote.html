@@ -1280,7 +1280,7 @@
 
     const templates = {
       registration: {
-        title: "營業登記一年合約（依合約內指定付款時間點）",
+        title: "營業登記合約（依合約內指定付款時間點）",
         rows: [
           {
             type: "registrationContract",
@@ -1288,7 +1288,7 @@
             serviceName: "(台中)營業登記",
             unitPrice: 1800,
             contractMonths: 12,
-            months: 12,
+            months: 6,
             deposit: 6000
           }
         ],
@@ -2068,6 +2068,8 @@
       const nextTotalInput = quoteBody.querySelector("input[data-next-total]");
       const summaryText = quoteBody.querySelector("[data-summary-text]");
       const futureRowLabel = quoteBody.querySelector("[data-future-row-label]");
+      const futureRow = futureRowLabel?.closest("tr");
+      const registrationNote = summaryText?.parentElement.querySelector(".editable");
       if (nextTotalInput) {
         nextTotalInput.value = formatNumber(futureCycleTotal);
         nextTotalInput.setAttribute("value", formatNumber(futureCycleTotal));
@@ -2077,16 +2079,24 @@
           ? `${futureTitle}（${cycleLabel}）`
           : "已無後續請款";
       }
+      if (futureRow) {
+        futureRow.hidden = futurePeriods <= 0;
+      }
       if (summaryText) {
         const futureLine = futurePeriods <= 0
-          ? "已無後續請款"
+          ? ""
           : futurePeriods === 1
-            ? `${futureTitle} <strong>${formatNumber(futureCycleTotal)} 元</strong>`
-            : `${futureTitle}：<strong>${formatNumber(futureCycleTotal)} 元</strong>`;
+            ? `<div>${futureTitle} <strong>${formatNumber(futureCycleTotal)} 元</strong></div>`
+            : `<div>${futureTitle}：<strong>${formatNumber(futureCycleTotal)} 元</strong></div>`;
         summaryText.innerHTML = `
           <div>說明：第一期請款金額 <strong>${formatNumber(total)} 元</strong></div>
-          <div>${futureLine}</div>
+          ${futureLine}
         `;
+      }
+      if (registrationNote) {
+        registrationNote.textContent = futurePeriods > 0
+          ? "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)"
+          : "押金第一期收取。\n2. 會議室不另收費(採預制 每月80H內可使用)";
       }
     };
 
