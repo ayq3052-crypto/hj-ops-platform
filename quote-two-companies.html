@@ -21,24 +21,26 @@
     }
 
     main {
-      width: min(980px, calc(100% - 28px));
-      min-height: 100vh;
-      min-height: 100svh;
+      width: min(1160px, calc(100% - 28px));
       margin: 0 auto;
       padding: 26px 0 40px;
       display: grid;
-      align-content: center;
-      justify-items: center;
+      grid-template-columns: 230px minmax(0, 760px);
+      justify-content: center;
+      align-items: start;
+      gap: 18px;
     }
 
     .control-panel {
-      width: min(760px, 100%);
-      margin: 0 auto 16px;
-      padding: 10px;
+      width: 100%;
+      margin: 0;
+      padding: 14px;
       border: 1px solid #d9e1e7;
       border-radius: 10px;
       background: rgba(255, 255, 255, 0.9);
       box-shadow: 0 10px 26px rgba(35, 42, 55, 0.08);
+      position: sticky;
+      top: 18px;
     }
 
     .quote-sidebar-head {
@@ -122,32 +124,26 @@
     }
 
     .tools {
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
       gap: 6px;
-      justify-content: center;
       margin: 0;
     }
 
     .venue-tools {
-      padding-bottom: 8px;
+      padding-bottom: 10px;
       border-bottom: 1px solid #e5eaef;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
     }
 
     .venue-tools button {
-      min-width: 76px;
+      width: 100%;
+      min-width: 0;
     }
 
     .service-tools {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+      grid-template-columns: 1fr;
       gap: 7px;
-    }
-
-    .service-tools:has(button:only-child) {
-      display: flex;
-      justify-content: center;
     }
 
     .service-tools button {
@@ -159,13 +155,9 @@
       white-space: nowrap;
     }
 
-    .service-tools:has(button:only-child) button {
-      width: auto;
-      min-width: 160px;
-    }
-
     .back-link {
       display: inline-flex;
+      width: 100%;
       min-height: 32px;
       align-items: center;
       justify-content: center;
@@ -181,7 +173,7 @@
     }
 
     .service-select {
-      width: min(230px, 100%);
+      width: 100%;
       min-height: 32px;
       border: 1px solid #cfd6df;
       border-radius: 8px;
@@ -888,6 +880,15 @@
     }
 
     @media (max-width: 720px) {
+      main {
+        width: min(760px, calc(100% - 28px));
+        grid-template-columns: 1fr;
+      }
+
+      .control-panel {
+        position: static;
+      }
+
       .sheet {
         padding: 22px 14px;
       }

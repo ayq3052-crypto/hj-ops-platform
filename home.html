@@ -184,6 +184,26 @@
         outline: none;
       }
 
+      .reset-button {
+        min-height: 28px;
+        border: 0;
+        background: transparent;
+        color: #6f7c6d;
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 800;
+        justify-self: end;
+        padding: 0 2px;
+      }
+
+      .reset-button:hover,
+      .reset-button:focus-visible {
+        color: var(--ink);
+        text-decoration: underline;
+        outline: none;
+      }
+
       .login-note {
         min-height: 16px;
         margin: 0;
@@ -305,6 +325,7 @@
             </label>
             <button class="login-button" id="loginButton" type="submit">登入</button>
             <p class="login-note" id="loginNote"></p>
+            <button class="reset-button" id="resetButton" type="button" hidden>重設入口密碼</button>
           </form>
         </div>
 
@@ -323,16 +344,23 @@
     </main>
     <script src="./db-client.js?v=20260628-db-2"></script>
     <script>
-      const authKey = "hj-home-auth-v1";
-      const unlockKey = "hj-home-unlock-until-v1";
+      const allowedAccount = "ayq3052@gmail.com";
+      const authKey = "hj-home-auth-v2";
+      const unlockKey = "hj-home-unlock-until-v2";
+      const failKey = "hj-home-login-fail-v2";
       const legacySessionKey = "hj-home-session-v1";
+      const oldAuthKeys = ["hj-home-auth-v1"];
+      const oldUnlockKeys = ["hj-home-unlock-until-v1"];
       const unlockDurationMs = 5 * 60 * 60 * 1000;
+      const maxFailCount = 5;
+      const cooldownMs = 2 * 60 * 1000;
       const panel = document.querySelector("[data-locked]");
       const form = document.querySelector("#loginForm");
       const accountInput = document.querySelector("#accountInput");
       const passwordInput = document.querySelector("#passwordInput");
       const loginButton = document.querySelector("#loginButton");
       const lockButton = document.querySelector("#lockButton");
+      const resetButton = document.querySelector("#resetButton");
       const loginNote = document.querySelector("#loginNote");
       let lockTimer = null;
 
@@ -372,6 +400,24 @@
 
       const unlockedUntil = () => Number(localStorage.getItem(unlockKey) || 0);
       const hasValidUnlock = () => savedAuth() && unlockedUntil() > Date.now();
+      const failedState = () => {
+        try {
+          return JSON.parse(localStorage.getItem(failKey) || "null") || { count: 0, cooldownUntil: 0 };
+        } catch {
+          return { count: 0, cooldownUntil: 0 };
+        }
+      };
+
+      const cooldownRemainingMs = () => Math.max(0, Number(failedState().cooldownUntil || 0) - Date.now());
+      const clearFailures = () => localStorage.removeItem(failKey);
+
+      const recordFailure = () => {
+        const current = failedState();
+        const count = Number(current.count || 0) + 1;
+        const cooldownUntil = count >= maxFailCount ? Date.now() + cooldownMs : 0;
+        localStorage.setItem(failKey, JSON.stringify({ count, cooldownUntil }));
+        return { count, cooldownUntil };
+      };
 
       const formatRemaining = () => {
         const minutes = Math.max(0, Math.ceil((unlockedUntil() - Date.now()) / 60000));
@@ -420,6 +466,7 @@
       const syncMode = () => {
         const auth = savedAuth();
         loginButton.textContent = auth ? "登入" : "設定帳號密碼";
+        resetButton.hidden = !auth;
         setNote(auth ? "" : "首次使用請先設定帳號密碼。");
         setLocked(!hasValidUnlock());
         if (hasValidUnlock()) setNote(formatRemaining());
@@ -440,16 +487,45 @@
         accountInput.focus();
       };
 
+      const resetEntrancePassword = async () => {
+        localStorage.removeItem(authKey);
+        localStorage.removeItem(unlockKey);
+        clearFailures();
+        oldAuthKeys.forEach((key) => localStorage.removeItem(key));
+        oldUnlockKeys.forEach((key) => localStorage.removeItem(key));
+        sessionStorage.removeItem(legacySessionKey);
+        try {
+          await window.HJ_DB?.signOut?.();
+        } catch {
+          // 入口鎖重設不應被遠端登出狀態卡住。
+        }
+        accountInput.value = allowedAccount;
+        passwordInput.value = "";
+        syncMode();
+        setNote("已清除入口密碼，請重新設定。");
+        accountInput.focus();
+      };
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const account = accountInput.value.trim();
+        const account = accountInput.value.trim().toLowerCase();
         const password = passwordInput.value;
         if (!account || !password) {
           setNote("請輸入帳號與密碼。", "error");
           return;
         }
+        if (cooldownRemainingMs() > 0) {
+          const seconds = Math.ceil(cooldownRemainingMs() / 1000);
+          setNote(`密碼錯誤次數過多，請 ${seconds} 秒後再試。`, "error");
+          return;
+        }
         if (!validEmail(account)) {
           setNote("帳號請使用 Email，這樣資料庫才認得這個使用者。", "error");
+          return;
+        }
+        if (account !== allowedAccount) {
+          recordFailure();
+          setNote("此入口只允許正式帳號登入。", "error");
           return;
         }
 
@@ -461,6 +537,7 @@
             const salt = createSalt();
             const hash = await hashCredential(account, password, salt);
             localStorage.setItem(authKey, JSON.stringify({ account, salt, hash }));
+            clearFailures();
             unlockHome();
             return;
           }
@@ -468,11 +545,22 @@
           const hash = await hashCredential(account, password, auth.salt);
           if (account === auth.account && hash === auth.hash) {
             await window.HJ_DB.signInOrSignUp(account, password);
+            clearFailures();
             unlockHome();
           } else {
+            const failure = recordFailure();
+            if (failure.cooldownUntil) {
+              setNote("密碼錯誤次數過多，已暫停 2 分鐘。", "error");
+              return;
+            }
             setNote("帳號或密碼不正確。", "error");
           }
         } catch (error) {
+          const failure = recordFailure();
+          if (failure.cooldownUntil) {
+            setNote("登入失敗次數過多，已暫停 2 分鐘。", "error");
+            return;
+          }
           setNote(`登入失敗：${error.message || "請稍後再試"}`, "error");
         } finally {
           loginButton.disabled = false;
@@ -480,6 +568,7 @@
       });
 
       lockButton.addEventListener("click", lockHome);
+      resetButton.addEventListener("click", resetEntrancePassword);
       window.addEventListener("storage", (event) => {
         if (event.key === unlockKey && !hasValidUnlock()) syncMode();
       });

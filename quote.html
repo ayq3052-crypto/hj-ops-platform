@@ -1218,16 +1218,18 @@
         title: "營業登記一年合約（依合約內指定付款時間點）",
         rows: [
           {
-            type: "monthly",
+            type: "registrationContract",
             serviceName: "(台中)營業登記",
+            customerType: "小規模營業人",
             originalPrice: 3000,
             unitPrice: 1800,
-            months: 12,
-            note: "小規模營業人 / 一年合約年繳"
-          },
-          { type: "linkedAmount", text: "押金", amount: 6000 }
+            contractMonths: 12,
+            billMonths: 12,
+            deposit: 6000
+          }
         ],
-        note: "附註:會議室不另收費(採預制 每月80H內可使用)"
+        note: "2. 會議室不另收費(採預制 每月80H內可使用)",
+        summary: "registration"
       },
       mailCollection: {
         title: "代收信件一年約年繳（依合約內指定付款時間點）",
@@ -1447,10 +1449,21 @@
       if (months === 3) return "3M";
       if (months === 6) return "6M";
       if (months === 12) return "年繳";
+      if (months === 24) return "2Y";
+      if (months === 36) return "3Y";
+      return `${formatNumber(months)}M`;
+    };
+
+    const registrationCycleLabel = (months) => {
+      if (months === 6) return "6M";
+      if (months === 12) return "Y";
+      if (months === 24) return "2Y";
+      if (months === 36) return "3Y";
       return `${formatNumber(months)}M`;
     };
 
     const createRow = (row) => {
+      if (row.type === "registrationContract") return createRegistrationContractRow(row);
       if (row.type === "monthly") return createMonthlyRow(row);
       if (row.type === "linkedAmount") return createLinkedAmountRow(row);
       if (row.type === "packageModule") return createPackageModuleRow(row);
@@ -1506,6 +1519,74 @@
       tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
       tr.querySelector('[data-field="note"]').textContent = row.note;
       tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
+      return tr;
+    };
+
+    const createRegistrationContractRow = (row) => {
+      const contractPlans = [
+        { value: "12", label: "Y" },
+        { value: "24", label: "2Y" },
+        { value: "36", label: "3Y" }
+      ];
+      const billPlans = [
+        { value: "6", label: "6M" },
+        { value: "12", label: "Y" },
+        { value: "24", label: "2Y" },
+        { value: "36", label: "3Y" }
+      ];
+      const tr = document.createElement("tr");
+      tr.className = "item-row linked-row";
+      tr.dataset.calc = "registrationContract";
+      tr.innerHTML = `
+        <td>
+          <div class="row-edit-shell module-cell">
+            <button class="delete-row" type="button" data-delete-row aria-label="刪除此列" title="刪除此列">×</button>
+            <div class="editable module-title" contenteditable="true" data-field="serviceName"></div>
+            <div class="editable module-detail" contenteditable="true" data-field="customerType"></div>
+            <div class="module-fields">
+              <span>原價 <input class="inline-number" inputmode="numeric" data-role="originalPrice"> 元</span>
+              <span>優惠價 <input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月</span>
+            </div>
+            <div class="module-fields">
+              <span>
+                合約
+                <select class="inline-select" data-role="contractMonths">
+                  ${contractPlans.map((plan) => `<option value="${plan.value}">${plan.label}</option>`).join("")}
+                </select>
+              </span>
+              <span>
+                本期
+                <select class="inline-select" data-role="billMonths">
+                  ${billPlans.map((plan) => `<option value="${plan.value}">${plan.label}</option>`).join("")}
+                </select>
+              </span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="amount-breakdown">
+            <div class="amount-line">
+              <span class="amount-label">本期服務費</span>
+              <strong data-service-total>0</strong>
+            </div>
+            <div class="amount-line">
+              <span class="amount-label">押金</span>
+              <input class="inline-number" inputmode="numeric" data-role="deposit">
+            </div>
+            <div class="amount-line amount-total">
+              <span class="amount-label">小計</span>
+              <input class="amount-input" inputmode="numeric" readonly data-row-total value="0">
+            </div>
+          </div>
+        </td>
+      `;
+      tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
+      tr.querySelector('[data-field="customerType"]').textContent = row.customerType;
+      tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice);
+      tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
+      tr.querySelector('[data-role="contractMonths"]').value = String(row.contractMonths);
+      tr.querySelector('[data-role="billMonths"]').value = String(row.billMonths);
+      tr.querySelector('[data-role="deposit"]').value = formatNumber(row.deposit);
       return tr;
     };
 
@@ -1801,6 +1882,35 @@
         output.value = formatNumber(amount);
       }
 
+      if (row.dataset.calc === "registrationContract") {
+        const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
+        const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]').value);
+        const billMonths = parseNumber(row.querySelector('[data-role="billMonths"]').value);
+        const deposit = parseNumber(row.querySelector('[data-role="deposit"]').value);
+        const currentMonths = Math.max(Math.min(billMonths, contractMonths || billMonths), 0);
+        const serviceTotal = unitPrice * currentMonths;
+        const futureMonths = Math.max(contractMonths - currentMonths, 0);
+        const futurePeriods = billMonths ? Math.ceil(futureMonths / billMonths) : 0;
+        const futureCycleMonths = Math.min(billMonths, futureMonths);
+        const futureCycleTotal = unitPrice * futureCycleMonths;
+        const serviceTotalLabel = row.querySelector("[data-service-total]");
+        const summaryText = quoteBody.querySelector("[data-registration-summary]");
+        if (serviceTotalLabel) serviceTotalLabel.textContent = formatNumber(serviceTotal);
+        output.value = formatNumber(serviceTotal + deposit);
+        if (summaryText) {
+          const futureLine = futurePeriods <= 0
+            ? "本合約期已無第二期請款。"
+            : futurePeriods === 1
+              ? `第二期請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>`
+              : `第二至第${periodName(futurePeriods + 1)}期每期請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>`;
+          summaryText.innerHTML = `
+            <div>附註：1. 第一期請款金額 <strong>${formatNumber(serviceTotal + deposit)} 元</strong>（${registrationCycleLabel(billMonths)}）</div>
+            <div>${futureLine}</div>
+            <div>押金第一期收取，後續期數不再收押金。</div>
+          `;
+        }
+      }
+
       if (row.dataset.calc === "packageModule") {
         const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
         const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]').value);
@@ -2046,8 +2156,8 @@
       if (template.note || template.summary) {
         const noteRow = document.createElement("tr");
         noteRow.className = "note-row";
-        noteRow.innerHTML = template.summary === "office"
-          ? `<td class="note-red" colspan="2"><div class="summary-main" data-office-summary></div><div class="editable" contenteditable="true"></div></td>`
+        noteRow.innerHTML = template.summary
+          ? `<td class="note-red" colspan="2"><div class="summary-main" data-${template.summary}-summary></div><div class="editable" contenteditable="true"></div></td>`
           : `<td class="note-red" colspan="2"><div class="editable" contenteditable="true"></div></td>`;
         noteRow.querySelector(".editable").textContent = template.note;
         quoteBody.appendChild(noteRow);

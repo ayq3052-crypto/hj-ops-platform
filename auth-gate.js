@@ -1,6 +1,6 @@
 (() => {
-  const authKey = "hj-home-auth-v1";
-  const unlockKey = "hj-home-unlock-until-v1";
+  const authKey = "hj-home-auth-v2";
+  const unlockKey = "hj-home-unlock-until-v2";
   const legacySessionKey = "hj-home-session-v1";
 
   const hasAuth = () => {
