@@ -275,12 +275,30 @@ function supportsContractMode(row) {
   return ["registration", "office"].includes(contractType(row));
 }
 
+function sourceSystemOf(row) {
+  return String(row?.sourceSystem || row?.source_system || row?.sourceSnapshot?.source_system || "").trim();
+}
+
 function defaultOfficeContractMode(row) {
   if (!supportsContractMode(row)) return "";
   if (row?.isBlank) return "new";
-  const text = [row?.item, row?.category, row?.notes, row?.deposit].filter(Boolean).join(" ");
-  if (/續約|續租|未退/.test(text)) return "renewal";
+  if (row?.officeContractMode) return normalizeOfficeContractMode(row.officeContractMode);
+  if (row?.depositPolicy === "reuse_existing") return "renewal";
+  if (row?.depositPolicy === "collect_first_period") return "new";
+  const text = [row?.item, row?.category, row?.notes, row?.deposit, row?.sourceSnapshot?.deposit].filter(Boolean).join(" ");
+  if (/新約|新合約|新客|首次|第一次/.test(text)) return "new";
+  if (/續約|續租|押金沿用|保證金沿用|未退|已付押金/.test(text)) return "renewal";
+  if (sourceSystemOf(row) === "old_crm_import") return "renewal";
   return "new";
+}
+
+function shouldCollectDepositByValues(type, mode) {
+  const normalizedType = normalizeContractType(type);
+  return ["registration", "office"].includes(normalizedType) && normalizeOfficeContractMode(mode) === "new";
+}
+
+function shouldCollectDeposit(row) {
+  return shouldCollectDepositByValues(contractType(row), defaultOfficeContractMode(row));
 }
 
 function serviceAllowed(service, venue = activeVenue) {
@@ -464,7 +482,7 @@ function signedDate(row) {
 
 function paymentTotal(row) {
   const rentTotal = monthlyAmount(row) * monthsPerPayment(row);
-  if (contractType(row) === "office" && defaultOfficeContractMode(row) === "new") {
+  if (shouldCollectDeposit(row)) {
     return rentTotal + Number(digitsOnly(row.deposit) || 0);
   }
   return rentTotal;
@@ -558,9 +576,7 @@ function contractBaseFields(row) {
 
 function contractFields(row) {
   const key = contractDraftKey(row);
-  const values = { ...contractBaseFields(row), ...(contractDrafts[key] || {}) };
-  values.officeContractMode = normalizeOfficeContractMode(values.officeContractMode);
-  values.officeContractModeLabel = officeContractModeLabel(values.officeContractMode);
+  const values = contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...(contractDrafts[key] || {}) });
   return [
     {
       title: "甲方與館別",
@@ -628,10 +644,7 @@ function hasContractDraft(row) {
 
 function contractFlatValues(row) {
   const key = contractDraftKey(row);
-  const values = { ...contractBaseFields(row), ...(contractDrafts[key] || {}) };
-  values.officeContractMode = normalizeOfficeContractMode(values.officeContractMode);
-  values.officeContractModeLabel = officeContractModeLabel(values.officeContractMode);
-  return values;
+  return contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...(contractDrafts[key] || {}) });
 }
 
 function plainMoney(value) {
@@ -639,16 +652,25 @@ function plainMoney(value) {
 }
 
 function calculatedPaymentTotalFromDraft(row, draft = {}) {
-  const base = contractBaseFields(row);
-  const monthly = Number(plainMoney(draft.monthly ?? base.monthly));
-  const periodMonths = Number(String(draft.periodMonths ?? base.periodMonths).replace(/[^\d]/g, ""));
-  const type = draft.contractType ?? base.contractType;
-  const officeMode = normalizeOfficeContractMode(draft.officeContractMode ?? base.officeContractMode);
-  const deposit = Number(plainMoney(draft.deposit ?? base.deposit));
+  return calculatedPaymentTotalFromValues({ ...contractBaseFields(row), ...draft });
+}
+
+function calculatedPaymentTotalFromValues(values) {
+  const monthly = Number(plainMoney(values.monthly));
+  const periodMonths = Number(String(values.periodMonths || "").replace(/[^\d]/g, ""));
+  const deposit = Number(plainMoney(values.deposit));
   if (!monthly || !periodMonths) return "";
   const baseTotal = monthly * periodMonths;
-  const total = type === "office" && officeMode === "new" ? baseTotal + deposit : baseTotal;
+  const total = shouldCollectDepositByValues(values.contractType, values.officeContractMode) ? baseTotal + deposit : baseTotal;
   return formatCurrency(total);
+}
+
+function contractValuesWithDerivedTotals(values) {
+  values.officeContractMode = normalizeOfficeContractMode(values.officeContractMode);
+  values.officeContractModeLabel = officeContractModeLabel(values.officeContractMode);
+  const autoTotal = calculatedPaymentTotalFromValues(values);
+  if (autoTotal) values.paymentTotal = autoTotal;
+  return values;
 }
 
 function calculatedTermCountFromDraft(row, draft = {}) {
@@ -689,10 +711,9 @@ function contractPaymentTotalValue(values) {
   const monthly = Number(plainMoney(values.monthly));
   const periodMonths = Number(String(values.periodMonths || "").replace(/[^\d]/g, ""));
   const deposit = Number(plainMoney(values.deposit));
-  const officeMode = normalizeOfficeContractMode(values.officeContractMode);
   if (!monthly || !periodMonths) return "";
   const rentTotal = monthly * periodMonths;
-  return values.contractType === "office" && officeMode === "new" ? String(rentTotal + deposit) : String(rentTotal);
+  return shouldCollectDepositByValues(values.contractType, values.officeContractMode) ? String(rentTotal + deposit) : String(rentTotal);
 }
 
 function paymentScheduleDates(values) {
@@ -710,9 +731,9 @@ function renderPaymentScheduleNotice(values, total) {
   if (!periodMonths || termCount <= 1 || !total) return "";
   const dates = paymentScheduleDates(values);
   const dateText = dates.length && dates.length <= 6
-    ? `；繳款時間為 ${escapeHtml(dates.join("、"))} 前`
-    : `；後續每期請依合約起始日每 ${escapeHtml(periodMonths)} 個月繳納一次`;
-  return `<p class="payment-schedule-notice">繳款期數提醒：本合約共 ${escapeHtml(termCount)} 期，每 ${escapeHtml(periodMonths)} 個月為一期，每期匯款金額 ${escapeHtml(paymentMoneyText(total))} 元${dateText}。</p>`;
+    ? `繳款時間為 ${escapeHtml(dates.join("、"))} 前。`
+    : `後續每期請依合約起始日每 ${escapeHtml(periodMonths)} 個月繳納一次。`;
+  return `<p class="payment-schedule-notice"><span>繳款期數提醒：本合約共 ${escapeHtml(termCount)} 期，每 ${escapeHtml(periodMonths)} 個月為一期，每期匯款金額 ${escapeHtml(paymentMoneyText(total))} 元；</span><span>${dateText}</span></p>`;
 }
 
 function overlayText(value, fallback = "") {
@@ -724,9 +745,15 @@ function previewSpan(key, value, fallback = "") {
 }
 
 function officialStampAsset(values) {
-  // Public GitHub Pages builds must not expose company stamp artwork.
-  // The secure/internal build can restore these assets behind proper access control.
-  return null;
+  const venueCode = String(values.venue || "").includes("環瑞") ? "huanrui" : "taichung";
+  const asset = window.HJ_STAMP_ASSETS?.[venueCode];
+  if (!asset?.src) return null;
+  return {
+    src: asset.src,
+    width: Number(asset.width) || (venueCode === "huanrui" ? 518 : 402),
+    height: Number(asset.height) || (venueCode === "huanrui" ? 388 : 244),
+    className: asset.className || `${venueCode}-stamp`,
+  };
 }
 
 function renderOfficialStamp(values) {
@@ -1028,12 +1055,6 @@ function renderRegistrationContractDraft(values) {
         <p class="indent-1">六、租金應於約定日前繳納，不得任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。</p>
         <p class="indent-1">七、甲方為使租賃標的物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案，若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價3000元/月計算</p>
 
-        <p class="contract-section">第八條：應受強制執行之事項：</p>
-        <p class="indent-1">一、租約到期或欠繳房租或終止租約生效時。</p>
-        <p class="indent-1">二、乙方如有違反稅法、稅捐稽徵法、社秩法及虛設行號等不法之事，並影響甲方權益，甲方得立即中止甲乙雙方租約，並應官方要求通報相關單位。甲乙方若無任何違法情事或虛設行號、虛開發票等行為，而無法設籍此地，乙方得終止租約，不以違約論。</p>
-
-        <p class="contract-section">第九條：保證金：</p>
-        ${depositArticle}
         <footer>第1頁（共2頁）</footer>
       </article>
 
@@ -1042,6 +1063,12 @@ function renderRegistrationContractDraft(values) {
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
         </header>
         ${renderOfficialStamp(values)}
+        <p class="contract-section">第八條：應受強制執行之事項：</p>
+        <p class="indent-1">一、租約到期或欠繳房租或終止租約生效時。</p>
+        <p class="indent-1">二、乙方如有違反稅法、稅捐稽徵法、社秩法及虛設行號等不法之事，並影響甲方權益，甲方得立即中止甲乙雙方租約，並應官方要求通報相關單位。甲乙方若無任何違法情事或虛設行號、虛開發票等行為，而無法設籍此地，乙方得終止租約，不以違約論。</p>
+
+        <p class="contract-section">第九條：保證金：</p>
+        ${depositArticle}
         ${depositContinuation}
 
         <p class="contract-section">第十條：連帶保證金</p>
@@ -1056,7 +1083,7 @@ function renderRegistrationContractDraft(values) {
             <p>統一編號：${previewSpan("lessorCoNumber", values.lessorCoNumber)}</p>
             <p>負責人：${previewSpan("lessorOwner", values.lessorOwner)}</p>
             <p class="bank-lines">匯款帳號：<br>帳戶名稱：${previewSpan("lessor", values.lessor)}<br>銀行名稱：${previewSpan("bankName", values.bankName)}<br>行庫代號：${previewSpan("bankCode", values.bankCode)}<br>帳號：${previewSpan("bankAccount", values.bankAccount)}</p>
-            <p>本期匯款金額：<span data-preview-key="paymentTotal">${escapeHtml(totalText)}</span> 元</p>
+            <p class="payment-total-line">本期匯款金額：<span data-preview-key="paymentTotal">${escapeHtml(totalText)}</span> 元</p>
             ${renderPaymentScheduleNotice(values, total)}
           </div>
         </section>
@@ -1142,6 +1169,7 @@ function renderWorkplaceContractDraft(values, type) {
   const eventText = isSeat ? "共享座位使用事件" : "辦公室租賃事件";
   const subjectText = isSeat ? "共享座位及公共區域" : "辦公室及公共區域";
   const priceLabel = isSeat ? "每月使用費" : "每月租金";
+  const renewalSentence = isSeat ? "，如雙方無異議則自動續約一個月" : "";
   const useLimitClauses = isSeat
     ? [
         "乙方使用範圍限共享座位及甲方開放之公共區域，不得占用固定座位、會議室或其他未約定空間。",
@@ -1186,7 +1214,7 @@ function renderWorkplaceContractDraft(values, type) {
         <p>因${eventText}，訂立本契約，雙方同意之條件如左：</p>
         <p>第一條：租賃標的及使用範圍：${previewSpan("venueAddress", values.venueAddress)} ${subjectText}</p>
 
-        <p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>
+        <p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止${renewalSentence}。</p>
 
         <p class="contract-section">第三條：費用：</p>
         <p class="indent-1">一、${priceLabel}新台幣<span class="contract-fill-inline fill-money" data-preview-key="monthly">${escapeHtml(monthly)}</span>元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
@@ -1205,11 +1233,6 @@ function renderWorkplaceContractDraft(values, type) {
         <p class="contract-section">第七條：其他特約事項：</p>
         ${otherClauses.map((clause, index) => `<p class="indent-1">${"一二三四五六七八九十"[index]}、${escapeHtml(clause)}</p>`).join("")}
 
-        <p class="contract-section">第八條：應受強制執行之事項：</p>
-        <p class="indent-1">一、租約到期、欠繳租金或費用、或終止租約生效時。</p>
-        <p class="indent-1">二、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
-
-        ${renderWorkplaceDepositArticle(values, type)}
         <footer>第1頁（共2頁）</footer>
       </article>
 
@@ -1218,6 +1241,11 @@ function renderWorkplaceContractDraft(values, type) {
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
         </header>
         ${renderOfficialStamp(values)}
+        <p class="contract-section">第八條：應受強制執行之事項：</p>
+        <p class="indent-1">一、租約到期、欠繳租金或費用、或終止租約生效時。</p>
+        <p class="indent-1">二、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
+
+        ${renderWorkplaceDepositArticle(values, type)}
         <p>甲乙雙方應於租約終止或屆滿時完成費用結清、場域點交及物品清空。乙方如有積欠租金、費用、違約金或損害賠償，甲方得自應返還款項中扣除；不足部分乙方仍應補足。</p>
 
         <p class="contract-section">第十條：連帶保證責任</p>
@@ -1232,7 +1260,7 @@ function renderWorkplaceContractDraft(values, type) {
             <p>統一編號：${previewSpan("lessorCoNumber", values.lessorCoNumber)}</p>
             <p>負責人：${previewSpan("lessorOwner", values.lessorOwner)}</p>
             <p class="bank-lines">匯款帳號：<br>帳戶名稱：${previewSpan("lessor", values.lessor)}<br>銀行名稱：${previewSpan("bankName", values.bankName)}<br>行庫代號：${previewSpan("bankCode", values.bankCode)}<br>帳號：${previewSpan("bankAccount", values.bankAccount)}</p>
-            <p>本期匯款金額：<span data-preview-key="paymentTotal">${escapeHtml(totalText)}</span> 元</p>
+            <p class="payment-total-line">本期匯款金額：<span data-preview-key="paymentTotal">${escapeHtml(totalText)}</span> 元</p>
             ${renderPaymentScheduleNotice(values, total)}
           </div>
         </section>

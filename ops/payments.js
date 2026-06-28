@@ -96,6 +96,8 @@ function normalizeYear(value) {
 
 function scanStoredPaymentYears(venue) {
   const years = new Set([String(initialPaymentYear)]);
+  const importedByYear = window.hjImportedPaymentDataByYear?.[venue] || {};
+  Object.keys(importedByYear).forEach((year) => years.add(normalizeYear(year)));
   try {
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index) || "";
@@ -737,6 +739,15 @@ function normalizeRowForMonth(row, venue = activeVenue, month = activeMonth, yea
 }
 
 function baseRowsFor(venue = activeVenue, month = activeMonth, year = activeYear) {
+  const importedByYearRows = window.hjImportedPaymentDataByYear?.[venue]?.[String(year)]?.[month];
+  if (Array.isArray(importedByYearRows)) {
+    return ensureRowKeys(
+      normalizeSectionGroups(cloneRows(importedByYearRows).map((row) => normalizeRowForMonth(row, venue, month, year))),
+      venue,
+      month,
+      year,
+    );
+  }
   if (Number(year) !== initialPaymentYear) return [];
   return ensureRowKeys(
     normalizeSectionGroups(cloneRows(paymentData[venue]?.[month] || []).map((row) => normalizeRowForMonth(row, venue, month, year))),

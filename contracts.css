@@ -634,79 +634,87 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 
 .html-contract-page {
   position: relative;
-  width: min(100%, 980px);
-  min-height: 1386px;
+  width: 210mm;
+  height: 297mm;
+  min-height: 297mm;
   box-sizing: border-box;
   border: 1px solid #d5dce7;
   background: #fff;
   color: #000;
   box-shadow: 0 12px 26px rgba(31, 41, 55, 0.11);
   font-family: "標楷體-繁", "BiauKaiTC-Regular", BiauKai, "標楷體-港澳", "標楷體", "Kaiti TC", Kai, DFKai-SB, serif;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 1.08;
-  padding: 72px 62px 44px;
+  line-height: 1.06;
+  letter-spacing: 0;
+  overflow: hidden;
+  padding: 10.5mm 14mm 9.5mm;
   -webkit-font-smoothing: subpixel-antialiased;
 }
 
 .html-contract-logo {
   display: grid;
   justify-items: center;
-  margin: 0 0 24px;
+  margin: 0 0 8px;
 }
 
 .html-contract-logo.second {
-  margin-bottom: 38px;
+  margin-bottom: 14px;
 }
 
 .html-contract-logo img {
-  width: 128px;
+  width: 82px;
   height: auto;
 }
 
 .html-contract-page h2 {
-  margin: 0 0 28px;
+  margin: 0 0 10px;
   text-align: center;
-  font-size: 36px;
+  font-size: 25px;
   font-weight: 500;
-  letter-spacing: 6px;
+  letter-spacing: 0;
 }
 
 .html-contract-page p {
-  margin: 0 0 3px;
+  margin: 0 0 1.5px;
   color: #000;
   text-align: left;
   white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .html-contract-page .contract-section {
-  margin-top: 16px;
+  margin-top: 7px;
 }
 
 .html-contract-page .indent-1 {
-  padding-left: 32px;
-  text-indent: -32px;
+  padding-left: 25px;
+  text-indent: -25px;
 }
 
 .contract-fill-inline {
   display: inline-block;
   min-width: 44px;
+  max-width: 100%;
   text-align: center;
   text-indent: 0;
   border-bottom: 1px solid #000;
   line-height: 1.05;
   margin: 0 2px;
   padding: 0 3px;
+  vertical-align: baseline;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .contract-fill-inline.fill-date {
-  min-width: 104px;
+  min-width: 92px;
 }
 
 .contract-fill-inline.fill-money {
   box-sizing: border-box;
   width: auto;
-  min-width: 48px;
+  min-width: 44px;
   margin-left: 0.46em;
   margin-right: 0.3em;
 }
@@ -741,17 +749,29 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 .signature-block {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 22px;
-  margin-top: 72px;
-  min-height: 220px;
+  grid-template-columns: 1fr 210px;
+  gap: 14px;
+  margin-top: 44px;
+  min-height: 130px;
 }
 
-.signature-block p,
+.signature-block p {
+  margin-bottom: 4px;
+  font-size: 15px;
+  line-height: 1.12;
+}
+
+.signature-block .bank-lines,
+.signature-block .payment-total-line,
+.signature-block .payment-schedule-notice {
+  font-size: 13px;
+  line-height: 1.18;
+}
+
 .lessee-block p {
-  margin-bottom: 12px;
-  font-size: 22px;
-  line-height: 1.2;
+  margin-bottom: 4px;
+  font-size: 15px;
+  line-height: 1.12;
 }
 
 .signature-block .bank-lines {
@@ -759,17 +779,19 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .signature-block .payment-schedule-notice {
-  margin-top: -4px;
-  margin-bottom: 12px;
-  font-size: 20px;
-  line-height: 1.25;
+  display: grid;
+  gap: 3px;
+  margin-top: 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  line-height: 1.16;
 }
 
 .official-stamp-area {
   position: absolute;
-  left: 52.5%;
-  top: 35%;
-  width: 244px;
+  left: 58.5%;
+  top: 43.5%;
+  width: 197px;
   height: auto;
   z-index: 2;
 }
@@ -782,15 +804,15 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .official-stamp-area.taichung-stamp {
-  left: 52.6%;
-  top: 35%;
-  width: 244px;
+  left: 58.5%;
+  top: 43.5%;
+  width: 197px;
 }
 
 .official-stamp-area.huanrui-stamp {
-  left: 52.5%;
-  top: 35.35%;
-  width: 365px;
+  left: 50.5%;
+  top: 43.5%;
+  width: 294px;
 }
 
 .official-stamp-area.stamp-missing {
@@ -813,29 +835,33 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .lessee-block {
-  margin-top: 40px;
+  margin-top: 34px;
 }
 
 .lessee-block span {
   display: inline-block;
-  min-width: 240px;
+  min-width: 150px;
+  max-width: calc(100% - 8em);
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .html-contract-page .contract-date {
   position: absolute;
-  right: 104px;
-  bottom: 92px;
+  right: 54px;
+  bottom: 43px;
   margin: 0;
-  font-size: 22px;
+  font-size: 14px;
 }
 
 .html-contract-page footer {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 20px;
+  bottom: 8mm;
   text-align: center;
-  font-size: 14px;
+  font-size: 10px;
   color: #111;
 }
 
@@ -1408,14 +1434,14 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   }
 
   body.contract-body.is-printing-contract .contract-print-root .official-stamp-area.taichung-stamp {
-    left: 52.6%;
-    top: 35%;
+    left: 58.5%;
+    top: 43.5%;
     width: 197px;
   }
 
   body.contract-body.is-printing-contract .contract-print-root .official-stamp-area.huanrui-stamp {
-    left: 52.5%;
-    top: 35.35%;
+    left: 50.5%;
+    top: 43.5%;
     width: 294px;
   }
 }

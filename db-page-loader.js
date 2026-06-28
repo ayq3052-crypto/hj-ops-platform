@@ -1,9 +1,9 @@
 (() => {
   const pageScripts = {
-    crm: ["./app.js?v=20260628-db-loader-1"],
-    contracts: ["./contracts.js?v=20260628-db-loader-1"],
-    payments: ["./ops/payments.js?v=20260628-db-loader-1"],
-    drafts: ["./ops/drafts.js?v=20260628-db-loader-1"],
+    crm: ["./app.js?v=20260629-contract-print-1"],
+    contracts: ["./contracts.js?v=20260629-contract-print-1"],
+    payments: ["./ops/payments.js?v=20260629-contract-print-1"],
+    drafts: ["./ops/drafts.js?v=20260629-contract-print-1"],
   };
 
   const statusText = {

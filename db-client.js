@@ -176,43 +176,66 @@
     return branchesPromise;
   };
 
-  const customerToCrmRow = (row, index) => ({
-    id: textOrEmpty(row.customer_no),
-    name: textOrEmpty(row.customer_name),
-    company: textOrEmpty(row.company_name),
-    category: "",
-    item: itemFromServiceType(row.service_type),
-    cycle: textOrEmpty(row.payment_cycle),
-    start: isoToRoc(row.contract_start),
-    end: isoToRoc(row.contract_end),
-    mark: "",
-    payDay: row.payment_day ? String(row.payment_day) : "",
-    amount: moneyText(row.monthly_amount, row.monthly_amount ? "/m" : ""),
-    industry: "",
-    signedAt: "",
-    deposit: moneyText(row.deposit_amount),
-    coNumber: textOrEmpty(row.company_tax_id),
-    birthday: isoToRoc(row.birthday),
-    address: textOrEmpty(row.address),
-    phone: textOrEmpty(row.phone),
-    idNumber: textOrEmpty(row.identity_number),
-    locker: "",
-    mail: textOrEmpty(row.email),
-    notes: textOrEmpty(row.notes),
-    folder: row.crm_status === "ended" ? "ended" : "active",
-    venue: row.branch_code,
-    sourceFormat: "db",
-    uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
-    contractTerm: "",
-  });
+  const paymentCycleFromContract = (customer, contract) => textOrEmpty(contract?.payment_cycle || customer.payment_cycle);
 
-  const buildCrmSource = (customers) => {
+  const contractModeFromPolicy = (policy) => {
+    if (policy === "reuse_existing") return "renewal";
+    if (policy === "collect_first_period") return "new";
+    return "";
+  };
+
+  const customerToCrmRow = (row, index, contract = null) => {
+    const snapshot = row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
+    const contractDraft = snapshot.contractDraft && typeof snapshot.contractDraft === "object" ? snapshot.contractDraft : {};
+    const cycle = paymentCycleFromContract(row, contract);
+    const monthly = contract?.monthly_amount ?? row.monthly_amount;
+    const deposit = contract?.deposit_amount ?? row.deposit_amount;
+    return {
+      id: textOrEmpty(row.customer_no),
+      name: textOrEmpty(row.customer_name),
+      company: textOrEmpty(row.company_name),
+      category: textOrEmpty(snapshot.category),
+      item: textOrEmpty(snapshot.item) || itemFromServiceType(row.service_type),
+      cycle,
+      start: isoToRoc(contract?.start_date || row.contract_start),
+      end: isoToRoc(contract?.end_date || row.contract_end),
+      mark: textOrEmpty(snapshot.mark),
+      payDay: row.payment_day ? String(row.payment_day) : textOrEmpty(snapshot.payDay),
+      amount: textOrEmpty(snapshot.amount) || moneyText(monthly, monthly ? "/m" : ""),
+      pricePlan: textOrEmpty(snapshot.pricePlan),
+      industry: textOrEmpty(snapshot.industry),
+      signedAt: textOrEmpty(snapshot.signedAt) || isoToRoc(contract?.signed_date),
+      deposit: textOrEmpty(snapshot.deposit) || moneyText(deposit),
+      coNumber: textOrEmpty(row.company_tax_id || snapshot.coNumber),
+      birthday: textOrEmpty(snapshot.birthday) || isoToRoc(row.birthday),
+      address: textOrEmpty(row.address || snapshot.address),
+      phone: textOrEmpty(row.phone || snapshot.phone),
+      idNumber: textOrEmpty(row.identity_number || snapshot.idNumber),
+      locker: textOrEmpty(snapshot.locker),
+      mail: textOrEmpty(row.email || snapshot.mail),
+      notes: textOrEmpty(row.notes || snapshot.notes),
+      folder: row.crm_status === "ended" ? "ended" : "active",
+      venue: row.branch_code,
+      sourceSystem: textOrEmpty(row.source_system),
+      sourceSnapshot: snapshot,
+      sourceFormat: "db",
+      uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
+      contractTerm: textOrEmpty(snapshot.contractTerm),
+      depositPolicy: textOrEmpty(contract?.deposit_policy),
+      officeContractMode: textOrEmpty(contractDraft.officeContractMode) || contractModeFromPolicy(contract?.deposit_policy),
+      contractStatus: textOrEmpty(contract?.contract_status),
+      stampVersion: textOrEmpty(contract?.stamp_version),
+    };
+  };
+
+  const buildCrmSource = (customers, contracts = []) => {
+    const contractByCustomer = new Map(contracts.map((contract) => [contract.customer_id, contract]));
     const venues = {};
     Object.keys(venueLabels).forEach((venue) => {
       const rows = customers
         .filter((row) => row.branch_code === venue)
         .sort((a, b) => String(a.customer_no).localeCompare(String(b.customer_no), "zh-Hant", { numeric: true }))
-        .map(customerToCrmRow);
+        .map((row, index) => customerToCrmRow(row, index, contractByCustomer.get(row.id)));
       venues[venue] = { activeYear: "2026", years: { 2026: rows } };
     });
     return {
@@ -254,6 +277,7 @@
 
   const buildPaymentGlobals = (paymentRows) => {
     const imported = { taichung: {}, huanrui: {} };
+    const importedByYear = { taichung: {}, huanrui: {} };
     let currentRows = [];
     paymentRows
       .slice()
@@ -262,6 +286,11 @@
         const venue = row.branch_code;
         const label = monthLabel(row.month);
         const legacy = paymentDbRowToLegacy(row);
+        const yearKey = String(row.year || 2026);
+        if (!importedByYear[venue]) importedByYear[venue] = {};
+        if (!importedByYear[venue][yearKey]) importedByYear[venue][yearKey] = {};
+        if (!importedByYear[venue][yearKey][label]) importedByYear[venue][yearKey][label] = [];
+        importedByYear[venue][yearKey][label].push(legacy);
         if (venue === "taichung" && Number(row.year) === 2026 && Number(row.month) === 6) {
           currentRows.push(legacy);
           return;
@@ -270,7 +299,7 @@
         if (!imported[venue][label]) imported[venue][label] = [];
         imported[venue][label].push(legacy);
       });
-    return { imported, currentRows };
+    return { imported, importedByYear, currentRows };
   };
 
   const draftDbRowToLegacy = (row) => {
@@ -298,20 +327,26 @@
     if (!platformDataPromise) {
       platformDataPromise = (async () => {
         await ensureSession();
-        const [customers, paymentRows, drafts] = await Promise.all([
+        const [customers, contracts, paymentRows, drafts, settings] = await Promise.all([
           queryAll("v_customers_current"),
+          queryAll("v_contracts_current"),
           queryAll("v_payment_month_table"),
           queryAll("v_message_draft_queue"),
+          queryAll("system_settings", "key,value"),
         ]);
-        const crmSource = buildCrmSource(customers);
+        const crmSource = buildCrmSource(customers, contracts);
         const paymentGlobals = buildPaymentGlobals(paymentRows);
+        const settingsByKey = Object.fromEntries((settings || []).map((row) => [row.key, row.value]));
         return {
           crmSource,
           paymentImported: paymentGlobals.imported,
+          paymentImportedByYear: paymentGlobals.importedByYear,
           paymentCurrent: paymentGlobals.currentRows,
           draftItems: drafts.map(draftDbRowToLegacy),
+          stampAssets: settingsByKey.contract_stamp_assets_v1 || {},
           counts: {
             customers: customers.length,
+            contracts: contracts.length,
             paymentRows: paymentRows.length,
             drafts: drafts.length,
           },
@@ -326,8 +361,10 @@
     window.HJ_CRM_SOURCE_DATA = data.crmSource;
     window.hjCrmSourceData = data.crmSource;
     window.hjImportedPaymentData = data.paymentImported;
+    window.hjImportedPaymentDataByYear = data.paymentImportedByYear;
     window.hjDefaultPaymentRows = data.paymentCurrent;
     window.hjFutureDraftItems = data.draftItems;
+    window.HJ_STAMP_ASSETS = data.stampAssets;
     return data;
   };
 

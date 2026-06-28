@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>報價單</title>
   <link rel="icon" href="data:,">
-  <script src="./auth-gate.js?v=20260628-five-hour-unlock-1"></script>
+  <script src="./auth-gate.js?v=20260629-contract-print-1"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -339,6 +339,32 @@
       white-space: normal;
     }
 
+    .company-service-cell {
+      display: grid;
+      grid-template-columns: 136px minmax(0, 1fr);
+      gap: 20px;
+      align-items: stretch;
+      text-align: left;
+    }
+
+    .company-name-box {
+      display: grid;
+      min-height: 86px;
+      place-items: center;
+      border-right: 1px solid #cfd9d7;
+      color: #17251f;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .company-details {
+      display: grid;
+      gap: 7px;
+      align-content: center;
+      padding-left: 8px;
+      text-align: left;
+    }
+
     .row-edit-shell {
       position: relative;
       display: grid;
@@ -526,7 +552,16 @@
     }
 
     body.pdf-exporting .sheet {
+      grid-column: 1;
+      width: 760px;
       box-shadow: none;
+    }
+
+    body.pdf-exporting main {
+      width: 760px;
+      grid-template-columns: minmax(0, 760px);
+      justify-content: center;
+      gap: 0;
     }
 
     body.pdf-hide-remarks .info-card.full {
@@ -613,6 +648,20 @@
     .total-row td {
       background: #fffaf1;
       border-top: 2px solid #245d56;
+    }
+
+    .future-row td {
+      background: #f6faf8;
+      border-top: 1px solid #d8e0df;
+      color: #253b36;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .future-row .amount-input {
+      color: #253b36;
+      font-size: 20px;
+      font-weight: 800;
     }
 
     .amount-input:focus {
@@ -868,6 +917,22 @@
 
       .structured-desc {
         gap: 2px;
+      }
+
+      .company-service-cell {
+        grid-template-columns: 104px minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .company-name-box {
+        min-height: 54px;
+        font-size: 11.8px;
+        line-height: 1.28;
+      }
+
+      .company-details {
+        gap: 3px;
+        padding-left: 5px;
       }
 
       .module-cell {
@@ -1219,16 +1284,15 @@
         rows: [
           {
             type: "registrationContract",
+            companyName: "公司行號（請填）",
             serviceName: "(台中)營業登記",
-            customerType: "小規模營業人",
-            originalPrice: 3000,
             unitPrice: 1800,
             contractMonths: 12,
-            billMonths: 12,
+            months: 12,
             deposit: 6000
           }
         ],
-        note: "2. 會議室不另收費(採預制 每月80H內可使用)",
+        note: "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)",
         summary: "registration"
       },
       mailCollection: {
@@ -1454,14 +1518,6 @@
       return `${formatNumber(months)}M`;
     };
 
-    const registrationCycleLabel = (months) => {
-      if (months === 6) return "6M";
-      if (months === 12) return "Y";
-      if (months === 24) return "2Y";
-      if (months === 36) return "3Y";
-      return `${formatNumber(months)}M`;
-    };
-
     const createRow = (row) => {
       if (row.type === "registrationContract") return createRegistrationContractRow(row);
       if (row.type === "monthly") return createMonthlyRow(row);
@@ -1523,50 +1579,39 @@
     };
 
     const createRegistrationContractRow = (row) => {
-      const contractPlans = [
-        { value: "12", label: "Y" },
-        { value: "24", label: "2Y" },
-        { value: "36", label: "3Y" }
-      ];
-      const billPlans = [
-        { value: "6", label: "6M" },
-        { value: "12", label: "Y" },
-        { value: "24", label: "2Y" },
-        { value: "36", label: "3Y" }
-      ];
       const tr = document.createElement("tr");
       tr.className = "item-row linked-row";
       tr.dataset.calc = "registrationContract";
       tr.innerHTML = `
         <td>
-          <div class="row-edit-shell module-cell">
+          <div class="row-edit-shell company-service-cell">
             <button class="delete-row" type="button" data-delete-row aria-label="刪除此列" title="刪除此列">×</button>
-            <div class="editable module-title" contenteditable="true" data-field="serviceName"></div>
-            <div class="editable module-detail" contenteditable="true" data-field="customerType"></div>
-            <div class="module-fields">
-              <span>原價 <input class="inline-number" inputmode="numeric" data-role="originalPrice"> 元</span>
-              <span>優惠價 <input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月</span>
+            <div class="company-name-box">
+              <span class="editable" contenteditable="true" data-field="companyName"></span>
             </div>
-            <div class="module-fields">
-              <span>
+            <div class="company-details">
+              <div>
+                <span class="editable" contenteditable="true" data-field="serviceName"></span>
+              </div>
+              <div>
                 合約
-                <select class="inline-select" data-role="contractMonths">
-                  ${contractPlans.map((plan) => `<option value="${plan.value}">${plan.label}</option>`).join("")}
-                </select>
-              </span>
-              <span>
-                本期
-                <select class="inline-select" data-role="billMonths">
-                  ${billPlans.map((plan) => `<option value="${plan.value}">${plan.label}</option>`).join("")}
-                </select>
-              </span>
+                <input class="inline-number months" inputmode="numeric" data-role="contractMonths">
+                個月　｜　本次
+                <input class="inline-number months" inputmode="numeric" data-role="months">
+                個月
+              </div>
+              <div>
+                月費
+                <input class="inline-number" inputmode="numeric" data-role="unitPrice">
+                元/月
+              </div>
             </div>
           </div>
         </td>
         <td>
           <div class="amount-breakdown">
             <div class="amount-line">
-              <span class="amount-label">本期服務費</span>
+              <span class="amount-label">本期費用</span>
               <strong data-service-total>0</strong>
             </div>
             <div class="amount-line">
@@ -1580,12 +1625,11 @@
           </div>
         </td>
       `;
+      tr.querySelector('[data-field="companyName"]').textContent = row.companyName;
       tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
-      tr.querySelector('[data-field="customerType"]').textContent = row.customerType;
-      tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice);
       tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
-      tr.querySelector('[data-role="contractMonths"]').value = String(row.contractMonths);
-      tr.querySelector('[data-role="billMonths"]').value = String(row.billMonths);
+      tr.querySelector('[data-role="contractMonths"]').value = formatNumber(row.contractMonths);
+      tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
       tr.querySelector('[data-role="deposit"]').value = formatNumber(row.deposit);
       return tr;
     };
@@ -1885,30 +1929,19 @@
       if (row.dataset.calc === "registrationContract") {
         const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
         const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]').value);
-        const billMonths = parseNumber(row.querySelector('[data-role="billMonths"]').value);
+        const months = parseNumber(row.querySelector('[data-role="months"]').value);
         const deposit = parseNumber(row.querySelector('[data-role="deposit"]').value);
-        const currentMonths = Math.max(Math.min(billMonths, contractMonths || billMonths), 0);
+        const currentMonths = Math.max(Math.min(months, contractMonths || months), 0);
         const serviceTotal = unitPrice * currentMonths;
-        const futureMonths = Math.max(contractMonths - currentMonths, 0);
-        const futurePeriods = billMonths ? Math.ceil(futureMonths / billMonths) : 0;
-        const futureCycleMonths = Math.min(billMonths, futureMonths);
-        const futureCycleTotal = unitPrice * futureCycleMonths;
+        const nextMonths = Math.max(contractMonths - currentMonths, 0);
+        const nextTotal = unitPrice * nextMonths;
         const serviceTotalLabel = row.querySelector("[data-service-total]");
-        const summaryText = quoteBody.querySelector("[data-registration-summary]");
         if (serviceTotalLabel) serviceTotalLabel.textContent = formatNumber(serviceTotal);
+        row.dataset.nextTotal = String(nextTotal);
+        row.dataset.nextMonths = String(nextMonths);
+        row.dataset.currentMonths = String(currentMonths);
+        row.dataset.unitPrice = String(unitPrice);
         output.value = formatNumber(serviceTotal + deposit);
-        if (summaryText) {
-          const futureLine = futurePeriods <= 0
-            ? "本合約期已無第二期請款。"
-            : futurePeriods === 1
-              ? `第二期請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>`
-              : `第二至第${periodName(futurePeriods + 1)}期每期請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>`;
-          summaryText.innerHTML = `
-            <div>附註：1. 第一期請款金額 <strong>${formatNumber(serviceTotal + deposit)} 元</strong>（${registrationCycleLabel(billMonths)}）</div>
-            <div>${futureLine}</div>
-            <div>押金第一期收取，後續期數不再收押金。</div>
-          `;
-        }
       }
 
       if (row.dataset.calc === "packageModule") {
@@ -2007,11 +2040,54 @@
           .reduce((sum, itemInput) => sum + parseNumber(itemInput.value), 0);
         input.value = formatNumber(sectionTotal);
       });
-      const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total])")]
+      const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total]):not([data-next-total])")]
         .filter((input) => !input.hasAttribute("data-section-total"))
         .reduce((sum, input) => sum + parseNumber(input.value), 0);
+      const registrationRows = [...quoteBody.querySelectorAll(".linked-row[data-calc='registrationContract']")];
+      const registrationInfos = registrationRows.map((row) => {
+        const currentMonths = Math.max(parseNumber(row.dataset.currentMonths), 0);
+        const nextMonths = Math.max(parseNumber(row.dataset.nextMonths), 0);
+        const unitPrice = Math.max(parseNumber(row.dataset.unitPrice), 0);
+        return { currentMonths, nextMonths, unitPrice };
+      });
+      const futurePeriods = registrationInfos.length
+        ? Math.max(...registrationInfos.map((info) => info.currentMonths ? Math.ceil(info.nextMonths / info.currentMonths) : 0))
+        : 0;
+      const futureCycleTotal = registrationInfos.reduce((sum, info) => {
+        return sum + info.unitPrice * Math.min(info.currentMonths, info.nextMonths);
+      }, 0);
+      const cycleMonths = registrationInfos.find((info) => info.currentMonths > 0)?.currentMonths || 0;
+      const cycleLabel = paymentCycleLabel(cycleMonths);
+      const futureTitle = futurePeriods <= 0
+        ? "已無後續請款"
+        : futurePeriods === 1
+          ? "第二期請款金額"
+          : `第二至第${periodName(futurePeriods + 1)}期每期請款金額`;
       const totalInput = quoteBody.querySelector("[data-total]");
       if (totalInput) totalInput.value = formatNumber(total);
+      const nextTotalInput = quoteBody.querySelector("input[data-next-total]");
+      const summaryText = quoteBody.querySelector("[data-summary-text]");
+      const futureRowLabel = quoteBody.querySelector("[data-future-row-label]");
+      if (nextTotalInput) {
+        nextTotalInput.value = formatNumber(futureCycleTotal);
+        nextTotalInput.setAttribute("value", formatNumber(futureCycleTotal));
+      }
+      if (futureRowLabel) {
+        futureRowLabel.textContent = futurePeriods > 0
+          ? `${futureTitle}（${cycleLabel}）`
+          : "已無後續請款";
+      }
+      if (summaryText) {
+        const futureLine = futurePeriods <= 0
+          ? "已無後續請款"
+          : futurePeriods === 1
+            ? `${futureTitle} <strong>${formatNumber(futureCycleTotal)} 元</strong>`
+            : `${futureTitle}：<strong>${formatNumber(futureCycleTotal)} 元</strong>`;
+        summaryText.innerHTML = `
+          <div>說明：第一期請款金額 <strong>${formatNumber(total)} 元</strong></div>
+          <div>${futureLine}</div>
+        `;
+      }
     };
 
     const bindAmountInputs = () => {
@@ -2146,17 +2222,30 @@
       template.rows.forEach((row) => quoteBody.appendChild(createRow(row)));
 
       const totalRow = document.createElement("tr");
+      const isRegistrationSummary = template.summary === "registration";
       totalRow.className = "total-row";
       totalRow.innerHTML = `
-        <td class="label-red"><div class="editable" contenteditable="true">合計</div></td>
+        <td class="label-red"><div class="editable" contenteditable="true">${isRegistrationSummary ? "本期" : "合計"}</div></td>
         <td><input class="amount-input" data-total readonly value="0"></td>
       `;
       quoteBody.appendChild(totalRow);
 
+      if (isRegistrationSummary) {
+        const nextRow = document.createElement("tr");
+        nextRow.className = "future-row";
+        nextRow.innerHTML = `
+          <td><div class="editable" contenteditable="true" data-future-row-label>第二期請款金額（6M）</div></td>
+          <td><input class="amount-input" data-next-total readonly value="0"></td>
+        `;
+        quoteBody.appendChild(nextRow);
+      }
+
       if (template.note || template.summary) {
         const noteRow = document.createElement("tr");
         noteRow.className = "note-row";
-        noteRow.innerHTML = template.summary
+        noteRow.innerHTML = isRegistrationSummary
+          ? `<td class="note-red" colspan="2"><div class="summary-main" data-summary-text></div><div class="editable" contenteditable="true"></div></td>`
+          : template.summary
           ? `<td class="note-red" colspan="2"><div class="summary-main" data-${template.summary}-summary></div><div class="editable" contenteditable="true"></div></td>`
           : `<td class="note-red" colspan="2"><div class="editable" contenteditable="true"></div></td>`;
         noteRow.querySelector(".editable").textContent = template.note;
@@ -2314,7 +2403,7 @@
       }
     };
 
-    pdfButton.addEventListener("click", exportPdf);
+    pdfButton.addEventListener("click", () => window.print());
     printButton.addEventListener("click", () => window.print());
     registrationModeSelect.addEventListener("change", () => {
       if (registrationModeSelect.value === "two") {

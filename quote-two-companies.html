@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>兩家公司合併報價</title>
   <link rel="icon" href="data:,">
-  <script src="./auth-gate.js?v=20260628-entrance-lock-1"></script>
+  <script src="./auth-gate.js?v=20260629-contract-print-1"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -420,7 +420,29 @@
     }
 
     body.pdf-exporting .sheet {
+      grid-column: 1;
+      width: 760px;
       box-shadow: none;
+    }
+
+    body.pdf-exporting main {
+      width: 760px;
+      grid-template-columns: minmax(0, 760px);
+      justify-content: center;
+      gap: 0;
+    }
+
+    body.pdf-hide-remarks .info-card.full {
+      display: none !important;
+    }
+
+    .pdf-capture-page {
+      position: fixed;
+      top: 0;
+      left: -10000px;
+      width: 760px;
+      background: #ffffff;
+      pointer-events: none;
     }
 
     body.pdf-exporting .editable:focus,
@@ -1460,6 +1482,35 @@
       });
     };
 
+    const addCanvasToPdf = (pdf, canvas, addPage = false) => {
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 8;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = canvas.height / canvas.width;
+      let imageWidth = maxWidth;
+      let imageHeight = imageWidth * ratio;
+      if (imageHeight > maxHeight) {
+        imageHeight = maxHeight;
+        imageWidth = imageHeight / ratio;
+      }
+      const x = (pageWidth - imageWidth) / 2;
+      const y = (pageHeight - imageHeight) / 2;
+      if (addPage) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imageWidth, imageHeight, undefined, "FAST");
+    };
+
+    const createRemarksPdfPage = () => {
+      const remarksCard = document.querySelector(".info-card.full");
+      if (!remarksCard) return null;
+      const wrapper = document.createElement("section");
+      wrapper.className = "sheet pdf-capture-page";
+      wrapper.appendChild(remarksCard.cloneNode(true));
+      document.body.appendChild(wrapper);
+      return wrapper;
+    };
+
     const exportPdf = async () => {
       if (!window.html2canvas || !window.jspdf) {
         alert("PDF 功能尚未載入，請重新整理後再試。");
@@ -1468,7 +1519,9 @@
 
       pdfButton.disabled = true;
       pdfButton.textContent = "產生中";
+      const splitRemarks = false;
       document.body.classList.add("pdf-exporting");
+      if (splitRemarks) document.body.classList.add("pdf-hide-remarks");
 
       try {
         const sheet = document.querySelector(".sheet");
@@ -1479,36 +1532,41 @@
           imageTimeout: 0,
           onclone: preparePdfClone
         });
+        if (splitRemarks) document.body.classList.remove("pdf-hide-remarks");
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-        const pageWidth = 210;
-        const pageHeight = 297;
-        const margin = 8;
-        const maxWidth = pageWidth - margin * 2;
-        const maxHeight = pageHeight - margin * 2;
-        const ratio = canvas.height / canvas.width;
-        let imageWidth = maxWidth;
-        let imageHeight = imageWidth * ratio;
-        if (imageHeight > maxHeight) {
-          imageHeight = maxHeight;
-          imageWidth = imageHeight / ratio;
+        addCanvasToPdf(pdf, canvas);
+
+        if (splitRemarks) {
+          const remarksPage = createRemarksPdfPage();
+          if (remarksPage) {
+            const remarksCanvas = await window.html2canvas(remarksPage, {
+              scale: 2,
+              backgroundColor: "#ffffff",
+              useCORS: true,
+              imageTimeout: 0,
+              onclone: preparePdfClone
+            });
+            addCanvasToPdf(pdf, remarksCanvas, true);
+            remarksPage.remove();
+          }
         }
-        const x = (pageWidth - imageWidth) / 2;
-        const y = (pageHeight - imageHeight) / 2;
-        pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imageWidth, imageHeight, undefined, "FAST");
+
         const activeService = document.querySelector("[data-service][aria-pressed='true']")?.textContent.trim()
           || document.querySelector("[data-mode-label]")?.textContent.trim()
           || "報價單";
         const fileTitle = `${quoteTitle.textContent.trim()}-${activeService}`.replace(/[\\/:*?"<>|]/g, "-");
         pdf.save(`${fileTitle}.pdf`);
       } finally {
+        document.body.classList.remove("pdf-hide-remarks");
+        document.querySelectorAll(".pdf-capture-page").forEach((page) => page.remove());
         document.body.classList.remove("pdf-exporting");
         pdfButton.disabled = false;
         pdfButton.textContent = "下載PDF";
       }
     };
 
-    pdfButton.addEventListener("click", exportPdf);
+    pdfButton.addEventListener("click", () => window.print());
     printButton.addEventListener("click", () => window.print());
     registrationModeSelect.addEventListener("change", () => {
       if (registrationModeSelect.value === "single") {
