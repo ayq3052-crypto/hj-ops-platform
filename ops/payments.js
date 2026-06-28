@@ -302,6 +302,11 @@ function scheduleCrmAutoLookup(delay = 360) {
   }, delay);
 }
 
+function cancelCrmAutoLookup() {
+  window.clearTimeout(crmAutoLookupTimer);
+  crmAutoLookupTimer = null;
+}
+
 function fetchCrmRows(venue = activeVenue) {
   const rows = readCrmRowsSync(venue);
   if (rows.length) return Promise.resolve(rows);
@@ -2753,14 +2758,14 @@ function bindEvents() {
   );
 
   document.querySelector("#newCustomerId")?.addEventListener("input", () => {
+    cancelCrmAutoLookup();
     resetCrmCheckState();
-    scheduleCrmAutoLookup();
   });
 
   document.querySelector("#newCustomerId")?.addEventListener("change", () => {
+    cancelCrmAutoLookup();
     if (crmCheckState.status === "found" && crmCheckState.key === currentCrmCheckKey()) return;
     resetCrmCheckState();
-    scheduleCrmAutoLookup(0);
   });
 
   [

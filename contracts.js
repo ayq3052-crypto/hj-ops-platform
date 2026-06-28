@@ -1169,7 +1169,9 @@ function renderWorkplaceContractDraft(values, type) {
   const eventText = isSeat ? "共享座位使用事件" : "辦公室租賃事件";
   const subjectText = isSeat ? "共享座位及公共區域" : "辦公室及公共區域";
   const priceLabel = isSeat ? "每月使用費" : "每月租金";
-  const renewalSentence = isSeat ? "，如雙方無異議則自動續約一個月" : "";
+  const durationClause = isSeat
+    ? `<p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，如雙方無異議則自動續約一個月。</p>`
+    : `<p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>`;
   const useLimitClauses = isSeat
     ? [
         "乙方使用範圍限共享座位及甲方開放之公共區域，不得占用固定座位、會議室或其他未約定空間。",
@@ -1214,7 +1216,7 @@ function renderWorkplaceContractDraft(values, type) {
         <p>因${eventText}，訂立本契約，雙方同意之條件如左：</p>
         <p>第一條：租賃標的及使用範圍：${previewSpan("venueAddress", values.venueAddress)} ${subjectText}</p>
 
-        <p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止${renewalSentence}。</p>
+        ${durationClause}
 
         <p class="contract-section">第三條：費用：</p>
         <p class="indent-1">一、${priceLabel}新台幣<span class="contract-fill-inline fill-money" data-preview-key="monthly">${escapeHtml(monthly)}</span>元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>

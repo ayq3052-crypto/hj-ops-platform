@@ -1,8 +1,8 @@
 (() => {
   const pageScripts = {
     crm: ["./app.js?v=20260629-contract-print-1"],
-    contracts: ["./contracts.js?v=20260629-contract-print-1"],
-    payments: ["./ops/payments.js?v=20260629-contract-print-1"],
+    contracts: ["./contracts.js?v=20260629-contract-seat-huanrui-2"],
+    payments: ["./ops/payments.js?v=20260629-payment-search-2"],
     drafts: ["./ops/drafts.js?v=20260629-contract-print-1"],
   };
 
