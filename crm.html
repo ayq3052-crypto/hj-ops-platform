@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HJ 客戶資料</title>
+    <link rel="icon" href="data:," />
+    <script src="./auth-gate.js?v=20260628-five-hour-unlock-1"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260628-final-route-check-1" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
+            <span class="brand-mark">HJ</span>
+          </a>
+          <div>
+            <p class="brand-kicker" id="venueKicker">環瑞館 CRM</p>
+            <h1 id="appTitle">客戶資料</h1>
+          </div>
+        </div>
+        <nav class="page-switcher" aria-label="CRM 頁面切換">
+          <button class="active" type="button" data-page="profile">客戶資料</button>
+          <a id="contractPageLink" href="./contracts.html">客戶合約</a>
+        </nav>
+      </header>
+
+      <section class="context-bar" aria-label="年度與館別">
+        <div class="venue-switcher" aria-label="館別切換">
+          <button class="active" type="button" data-venue="taichung">台中館</button>
+          <button type="button" data-venue="huanrui">環瑞館</button>
+        </div>
+        <div class="year-tools">
+          <button class="year-nav" id="prevYearButton" type="button">← 上一年</button>
+          <label class="year-picker" id="yearPicker">
+            <span>西元年</span>
+            <select id="yearSelect"></select>
+          </label>
+          <button class="year-nav" id="nextYearButton" type="button">下一年 →</button>
+          <button class="create-year" id="createYearButton" type="button">建立新年度</button>
+        </div>
+      </section>
+
+      <div class="year-action-state" id="yearActionState" aria-live="polite"></div>
+
+      <dialog class="venue-dialog" id="venueDialog" aria-labelledby="venueDialogTitle">
+        <div class="venue-dialog-body">
+          <h2 id="venueDialogTitle">切換館別</h2>
+          <p id="venueDialogText"></p>
+          <div class="venue-dialog-actions">
+            <button class="secondary" id="venueCancelButton" type="button">取消</button>
+            <button id="venueConfirmButton" type="button">切換</button>
+          </div>
+        </div>
+      </dialog>
+
+      <section class="workspace" aria-label="CRM 切片工作面">
+        <aside class="roster">
+          <div class="roster-new">
+            <button class="new-customer-button" id="newButton" type="button">新增客戶</button>
+          </div>
+          <div class="roster-head">
+            <div>
+              <h2>客戶列表</h2>
+            </div>
+            <span id="recordCount">載入中</span>
+          </div>
+          <label class="search-box">
+            <span>搜尋</span>
+            <input id="searchInput" placeholder="編號、姓名、公司名稱、項目" />
+          </label>
+          <div class="folder-tabs" aria-label="客戶夾子">
+            <button class="active" type="button" data-folder="active">總表</button>
+            <button type="button" data-folder="ended">結束</button>
+          </div>
+          <div class="service-tabs" aria-label="客戶服務類型">
+            <button type="button" data-service="registration">營登</button>
+            <button type="button" data-service="office">辦公室</button>
+            <button type="button" data-service="seat">自由座</button>
+            <button class="active" type="button" data-service="all">全部</button>
+          </div>
+          <div class="record-list" id="recordList"></div>
+        </aside>
+
+        <section class="detail" aria-live="polite">
+          <div class="detail-head">
+            <div>
+              <h2 id="detailCompany">尚未選擇客戶</h2>
+            </div>
+          </div>
+
+          <div class="metrics" id="metrics"></div>
+
+          <div class="detail-grid">
+            <section class="field-panel">
+              <div class="panel-title">
+                <h3 id="panelHeading">客戶檔案</h3>
+                <div class="panel-actions">
+                  <span id="saveState">尚未修改</span>
+                  <button id="addContractButton" type="button" hidden>連結既有合約</button>
+                  <button class="secondary" id="addBlankContractButton" type="button" hidden>新增空白合約</button>
+                  <button class="secondary" id="editButton" type="button">修改</button>
+                  <button class="secondary" id="cancelButton" type="button" hidden>取消</button>
+                  <button id="saveButton" type="button">儲存</button>
+                  <button class="move" id="moveFolderButton" type="button">移到結束</button>
+                  <button class="delete" id="deleteButton" type="button">刪除本筆</button>
+                </div>
+              </div>
+              <form class="profile-form" id="profileForm"></form>
+              <div class="contract-frame" id="contractFrame" hidden></div>
+            </section>
+          </div>
+        </section>
+      </section>
+
+      <section class="overview" aria-label="資料檢查">
+        <details id="overviewDetails">
+          <summary class="overview-summary">
+            <div>
+              <span class="overview-kicker">資料檢查</span>
+              <h2 id="overviewTitle">客戶資料</h2>
+              <p id="overviewStatus">載入中</p>
+            </div>
+            <span class="summary-action">展開明細</span>
+          </summary>
+          <div class="overview-issues" id="overviewIssues" hidden></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>編號</th>
+                  <th>姓名</th>
+                  <th>公司名稱</th>
+                  <th>類別</th>
+                  <th>項目</th>
+                  <th>繳費</th>
+                  <th>起始日期</th>
+                  <th>合約到期日</th>
+                  <th>金額</th>
+                  <th>押金</th>
+                </tr>
+              </thead>
+              <tbody id="overviewRows"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+    </main>
+    <script src="./crm-data.js?v=20260628-source-merge-1"></script>
+    <script src="./app.js?v=20260628-open-ended-seat-1"></script>
+  </body>
+</html>

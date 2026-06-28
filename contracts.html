@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HJ 客戶合約</title>
+    <link rel="icon" href="data:," />
+    <script src="./auth-gate.js?v=20260628-five-hour-unlock-1"></script>
+    <link rel="stylesheet" href="./styles.css?v=20260628-final-route-check-1" />
+    <link rel="stylesheet" href="./contracts.css?v=20260628-venue-orange-1" />
+  </head>
+  <body class="contract-body">
+    <main class="shell contract-page">
+      <header class="topbar">
+        <div class="brand">
+          <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
+            <span class="brand-mark">HJ</span>
+          </a>
+          <div>
+            <p class="brand-kicker" id="venueKicker">環瑞館 CRM</p>
+            <h1>客戶合約</h1>
+          </div>
+        </div>
+        <nav class="page-switcher" aria-label="CRM 頁面切換">
+          <a id="profilePageLink" href="./crm.html">客戶資料</a>
+          <a class="active" href="./contracts.html">客戶合約</a>
+        </nav>
+      </header>
+
+      <section class="context-bar" aria-label="年度與館別">
+        <div class="venue-switcher" aria-label="館別切換">
+          <button type="button" data-venue="taichung">台中館</button>
+          <button class="active" type="button" data-venue="huanrui">環瑞館</button>
+        </div>
+        <div class="year-tools">
+          <button class="year-nav" id="prevYearButton" type="button">← 上一年</button>
+          <label class="year-picker" id="yearPicker">
+            <span>西元年</span>
+            <select id="yearSelect"></select>
+          </label>
+          <button class="year-nav" id="nextYearButton" type="button">下一年 →</button>
+          <button class="create-year" id="createYearButton" type="button">建立新年度</button>
+        </div>
+      </section>
+
+      <section class="contract-toolbar" aria-label="合約操作">
+        <div>
+          <span class="contract-kicker">CRM 連結合約</span>
+          <h2 id="contractTitle">請選擇客戶</h2>
+        </div>
+        <div class="contract-toolbar-actions">
+          <button id="linkContractButton" type="button">用印版</button>
+          <button class="secondary" id="blankContractButton" type="button">不用印版</button>
+          <button class="secondary" id="blankContractOpenButton" type="button">空白合約</button>
+        </div>
+      </section>
+
+      <section class="contract-workspace" aria-label="合約工作區">
+        <aside class="contract-roster">
+          <div class="contract-roster-head">
+            <h2>客戶</h2>
+            <span id="recordCount">0 筆</span>
+          </div>
+          <label class="contract-search">
+            <span>搜尋</span>
+            <input id="searchInput" placeholder="編號、姓名、公司名稱、項目" />
+          </label>
+          <div class="contract-folder-tabs" aria-label="合約客戶狀態">
+            <button class="active" type="button" data-folder="active">總表</button>
+            <button type="button" data-folder="ended">已結束</button>
+          </div>
+          <div class="contract-service-tabs" aria-label="合約服務類型">
+            <button class="active" type="button" data-service="registration">營登</button>
+            <button type="button" data-service="office">辦公室</button>
+            <button type="button" data-service="seat">自由座</button>
+            <button type="button" data-service="all">全部</button>
+          </div>
+          <div class="contract-record-list" id="recordList"></div>
+        </aside>
+
+        <section class="contract-detail" aria-live="polite">
+          <div class="contract-link-panel" id="contractActionPanel" hidden></div>
+          <div class="contract-summary-grid" id="contractSummary"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./crm-data.js?v=20260628-source-merge-1"></script>
+    <script src="./contracts.js?v=20260628-office-mode-clean-1"></script>
+  </body>
+</html>

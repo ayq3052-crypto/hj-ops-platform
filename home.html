@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hour Jungle 營運工作台</title>
+    <link rel="icon" href="data:," />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      :root {
+        --ink: #1e2421;
+        --muted: #616d60;
+        --line: #cfddc9;
+        --paper: #ecf0e9;
+        --panel: #fefffc;
+        --accent: #536f55;
+        --accent-soft: #eef7eb;
+        --accent-line: #b2c9aa;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+        background: var(--paper);
+      }
+
+      main {
+        width: min(980px, calc(100% - 32px));
+        min-height: 100vh;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 300px minmax(0, 1fr);
+        align-items: center;
+        gap: 30px;
+        padding: 32px 0;
+      }
+
+      .identity {
+        border-right: 1px solid rgba(83, 111, 85, 0.14);
+        padding-right: 30px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 54px;
+        height: 54px;
+        border-radius: 10px;
+        background: var(--ink);
+        color: #ffffff;
+        font-size: 20px;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .brand span {
+        display: block;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 850;
+        line-height: 1.1;
+      }
+
+      .brand strong {
+        display: block;
+        margin-top: 5px;
+        color: var(--ink);
+        font-size: 25px;
+        font-weight: 900;
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      nav {
+        display: grid;
+        gap: 12px;
+      }
+
+      .entry-panel {
+        display: grid;
+        gap: 12px;
+      }
+
+      .login-card {
+        width: min(320px, 100%);
+        justify-self: center;
+        transform: translateX(-34px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(254, 255, 252, 0.58);
+        padding: 16px;
+        box-shadow: 0 8px 18px rgba(31, 47, 30, 0.023);
+      }
+
+      .login-card form {
+        display: grid;
+        gap: 10px;
+      }
+
+      .entry-actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .lock-button {
+        min-height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(254, 255, 252, 0.6);
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 850;
+        padding: 0 12px;
+      }
+
+      .lock-button:hover,
+      .lock-button:focus-visible {
+        border-color: #8aa39f;
+        color: var(--ink);
+        outline: none;
+      }
+
+      .field {
+        display: grid;
+        grid-template-columns: 52px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+      }
+
+      .field span {
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 850;
+      }
+
+      input {
+        width: 100%;
+        height: 40px;
+        border: 1px solid #c9dac3;
+        border-radius: 8px;
+        background: #fefffd;
+        color: var(--ink);
+        font: inherit;
+        font-size: 15px;
+        font-weight: 760;
+        outline: none;
+        padding: 0 10px;
+      }
+
+      input:focus {
+        border-color: #9fbe96;
+        box-shadow: 0 0 0 3px rgba(83, 111, 85, 0.1);
+      }
+
+      .login-button {
+        min-height: 40px;
+        border: 1px solid var(--accent-line);
+        border-radius: 8px;
+        background: var(--accent-soft);
+        color: #4b684c;
+        cursor: pointer;
+        font: inherit;
+        font-size: 15px;
+        font-weight: 900;
+      }
+
+      .login-button:hover,
+      .login-button:focus-visible {
+        border-color: #9fbe96;
+        background: #e5f2e0;
+        outline: none;
+      }
+
+      .login-note {
+        min-height: 16px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 760;
+        line-height: 1.4;
+      }
+
+      .login-note[data-tone="error"] {
+        color: #b42318;
+      }
+
+      .entry-panel[data-locked="false"] .login-card,
+      .entry-panel[data-locked="true"] .entry-actions,
+      .entry-panel[data-locked="true"] nav {
+        display: none;
+      }
+
+      a {
+        min-height: 78px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 38px;
+        align-items: center;
+        padding: 0 18px 0 22px;
+        text-decoration: none;
+        box-shadow: 0 12px 30px rgba(31, 47, 30, 0.05);
+        transition: border-color 140ms ease, transform 140ms ease, box-shadow 140ms ease;
+      }
+
+      a:hover,
+      a:focus-visible {
+        border-color: #9fbe96;
+        background: #ffffff;
+        transform: translateX(3px);
+        box-shadow: 0 16px 34px rgba(31, 47, 30, 0.075);
+        outline: none;
+      }
+
+      .name {
+        font-family: "PingFang TC", "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 21px;
+        font-weight: 850;
+        line-height: 1.2;
+      }
+
+      .arrow {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: var(--accent);
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      @media (max-width: 760px) {
+        main {
+          min-height: auto;
+          grid-template-columns: 1fr;
+          align-items: start;
+          gap: 24px;
+          padding: 24px 0;
+        }
+
+        .identity {
+          border-right: 0;
+          padding-right: 0;
+        }
+
+        .brand strong {
+          font-size: 24px;
+        }
+
+        .login-card {
+          transform: none;
+        }
+
+        .name {
+          font-size: 21px;
+        }
+
+        .field {
+          grid-template-columns: 1fr;
+          gap: 7px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="identity" aria-label="Hour Jungle 營運工作台">
+        <div class="brand">
+          <div class="mark">HJ</div>
+          <div>
+            <span>HOUR JUNGLE</span>
+            <strong>營運工作台</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="entry-panel" data-locked="true" aria-label="入口登入">
+        <div class="login-card">
+          <form id="loginForm" autocomplete="off">
+            <label class="field">
+              <span>帳號：</span>
+              <input id="accountInput" name="hj_entry_account" type="search" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other" />
+            </label>
+            <label class="field">
+              <span>密碼：</span>
+              <input id="passwordInput" name="hj_entry_password" type="password" autocomplete="new-password" data-lpignore="true" data-form-type="other" />
+            </label>
+            <button class="login-button" id="loginButton" type="submit">登入</button>
+            <p class="login-note" id="loginNote"></p>
+          </form>
+        </div>
+
+        <div class="entry-actions">
+          <button class="lock-button" id="lockButton" type="button">鎖定入口</button>
+        </div>
+
+        <nav aria-label="系統主畫面">
+          <a href="./quote.html"><span class="name">報價單</span><span class="arrow">→</span></a>
+          <a href="./contracts.html?venue=taichung"><span class="name">合約書</span><span class="arrow">→</span></a>
+          <a href="./crm.html?venue=taichung"><span class="name">CRM</span><span class="arrow">→</span></a>
+          <a href="./payments.html"><span class="name">繳費表</span><span class="arrow">→</span></a>
+          <a href="./drafts.html"><span class="name">訊息草稿</span><span class="arrow">→</span></a>
+        </nav>
+      </section>
+    </main>
+    <script>
+      const authKey = "hj-home-auth-v1";
+      const unlockKey = "hj-home-unlock-until-v1";
+      const legacySessionKey = "hj-home-session-v1";
+      const unlockDurationMs = 5 * 60 * 60 * 1000;
+      const panel = document.querySelector("[data-locked]");
+      const form = document.querySelector("#loginForm");
+      const accountInput = document.querySelector("#accountInput");
+      const passwordInput = document.querySelector("#passwordInput");
+      const loginButton = document.querySelector("#loginButton");
+      const lockButton = document.querySelector("#lockButton");
+      const loginNote = document.querySelector("#loginNote");
+      let lockTimer = null;
+
+      const bytesToHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+
+      const hashCredential = async (account, password, salt) => {
+        const payload = `${salt}\n${account.trim()}\n${password}`;
+        const bytes = new TextEncoder().encode(payload);
+        const digest = await crypto.subtle.digest("SHA-256", bytes);
+        return bytesToHex(new Uint8Array(digest));
+      };
+
+      const createSalt = () => {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return bytesToHex(bytes);
+      };
+
+      const savedAuth = () => {
+        try {
+          return JSON.parse(localStorage.getItem(authKey) || "null");
+        } catch {
+          return null;
+        }
+      };
+
+      const nextUrl = () => {
+        const raw = new URLSearchParams(window.location.search).get("next") || "";
+        if (!raw) return "";
+        try {
+          const url = new URL(raw, window.location.href);
+          return url.origin === window.location.origin ? url.href : "";
+        } catch {
+          return "";
+        }
+      };
+
+      const unlockedUntil = () => Number(localStorage.getItem(unlockKey) || 0);
+      const hasValidUnlock = () => savedAuth() && unlockedUntil() > Date.now();
+
+      const formatRemaining = () => {
+        const minutes = Math.max(0, Math.ceil((unlockedUntil() - Date.now()) / 60000));
+        const hours = Math.floor(minutes / 60);
+        const rest = minutes % 60;
+        if (hours && rest) return `已解鎖，約 ${hours} 小時 ${rest} 分鐘後自動鎖定。`;
+        if (hours) return `已解鎖，約 ${hours} 小時後自動鎖定。`;
+        return `已解鎖，約 ${minutes} 分鐘後自動鎖定。`;
+      };
+
+      const scheduleAutoLock = () => {
+        window.clearTimeout(lockTimer);
+        const remaining = unlockedUntil() - Date.now();
+        if (remaining > 0) {
+          lockTimer = window.setTimeout(lockHome, remaining);
+        }
+      };
+
+      const unlockHome = () => {
+        localStorage.setItem(unlockKey, String(Date.now() + unlockDurationMs));
+        sessionStorage.setItem(legacySessionKey, "unlocked");
+        setLocked(false);
+        const target = nextUrl();
+        if (target) window.location.assign(target);
+      };
+
+      const setLocked = (locked) => {
+        panel.dataset.locked = String(locked);
+        window.clearTimeout(lockTimer);
+        if (!locked) {
+          accountInput.value = "";
+          passwordInput.value = "";
+          scheduleAutoLock();
+        }
+      };
+
+      const setNote = (text, tone = "") => {
+        loginNote.textContent = text;
+        if (tone) loginNote.dataset.tone = tone;
+        else delete loginNote.dataset.tone;
+      };
+
+      const syncMode = () => {
+        const auth = savedAuth();
+        loginButton.textContent = auth ? "登入" : "設定帳號密碼";
+        setNote(auth ? "" : "首次使用請先設定帳號密碼。");
+        setLocked(!hasValidUnlock());
+        if (hasValidUnlock()) setNote(formatRemaining());
+        window.requestAnimationFrame(() => {
+          if (panel.dataset.locked === "true") {
+            accountInput.value = "";
+            passwordInput.value = "";
+          }
+        });
+      };
+
+      const lockHome = () => {
+        localStorage.removeItem(unlockKey);
+        sessionStorage.removeItem(legacySessionKey);
+        setLocked(true);
+        syncMode();
+        accountInput.focus();
+      };
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const account = accountInput.value.trim();
+        const password = passwordInput.value;
+        if (!account || !password) {
+          setNote("請輸入帳號與密碼。", "error");
+          return;
+        }
+
+        loginButton.disabled = true;
+        try {
+          const auth = savedAuth();
+          if (!auth) {
+            const salt = createSalt();
+            const hash = await hashCredential(account, password, salt);
+            localStorage.setItem(authKey, JSON.stringify({ account, salt, hash }));
+            unlockHome();
+            return;
+          }
+
+          const hash = await hashCredential(account, password, auth.salt);
+          if (account === auth.account && hash === auth.hash) {
+            unlockHome();
+          } else {
+            setNote("帳號或密碼不正確。", "error");
+          }
+        } finally {
+          loginButton.disabled = false;
+        }
+      });
+
+      lockButton.addEventListener("click", lockHome);
+      window.addEventListener("storage", (event) => {
+        if (event.key === unlockKey && !hasValidUnlock()) syncMode();
+      });
+
+      syncMode();
+    </script>
+  </body>
+</html>

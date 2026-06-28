@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>訊息草稿</title>
+    <link rel="icon" href="data:," />
+    <script src="./auth-gate.js?v=20260628-five-hour-unlock-1"></script>
+    <link rel="stylesheet" href="./ops/ops-styles.css?v=20260627-reader-long-copy-1" />
+    <style>
+      .draft-schedule-layout {
+        width: min(1200px, calc(100vw - 120px));
+        max-width: none;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .draft-message-box textarea {
+        border: 2px solid #415071;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+      }
+
+      .draft-reader-panel {
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      .draft-schedule-layout {
+        grid-template-columns: 420px minmax(0, 1fr);
+      }
+
+      .draft-message-box textarea:focus {
+        outline: 0;
+        border-color: #28365d;
+      }
+    </style>
+    <script src="./ops/payment-month-data.js?v=20260627-company-4-mingchang-1" defer></script>
+    <script src="./ops/payment-current-data.js?v=20260627-company-4-mingchang-1" defer></script>
+    <script src="./ops/drafts-future-data.js?v=20260627-262-renewal-1" defer></script>
+    <script src="./ops/drafts.js?v=20260627-company-4-mingchang-1" defer></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.lucide&&window.lucide.createIcons()"></script>
+  </head>
+  <body>
+    <div class="draft-schedule-page">
+      <header class="topbar">
+        <div class="brand">
+          <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
+            <span class="brand-mark">HJ</span>
+          </a>
+          <div>
+            <p class="eyebrow">Copy</p>
+            <h1>訊息草稿</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="draft-year-tools" aria-label="訊息年度">
+            <span>西元年</span>
+            <select id="draftYearSelect" aria-label="選擇訊息年度"></select>
+          </div>
+          <button class="source-chip" type="button" data-refresh-payment-state>
+            <i data-lucide="refresh-cw"></i>
+            <span>重新讀取繳費表</span>
+          </button>
+          <a class="source-chip" href="./payments.html">
+            <i data-lucide="arrow-left"></i>
+            <span>回繳費表</span>
+          </a>
+        </div>
+      </header>
+
+      <section class="draft-status-strip" aria-label="草稿狀態">
+        <button class="metric active" type="button" data-draft-filter="today">
+          <span>今日該貼</span>
+          <strong data-draft-count="today">0</strong>
+        </button>
+        <button class="metric" type="button" data-draft-filter="follow">
+          <span>已貼待追</span>
+          <strong data-draft-count="follow">0</strong>
+        </button>
+        <button class="metric" type="button" data-draft-filter="upcoming">
+          <span>本月預備</span>
+          <strong data-draft-count="upcoming">0</strong>
+        </button>
+        <button class="metric" type="button" data-draft-filter="needs-check">
+          <span>待確認</span>
+          <strong data-draft-count="needs-check">0</strong>
+        </button>
+      </section>
+
+      <section class="draft-month-map">
+        <div class="draft-venue-tabs" role="tablist" aria-label="館別">
+          <button class="draft-venue-tab active" type="button" data-draft-venue="taichung">台中館</button>
+          <button class="draft-venue-tab" type="button" data-draft-venue="huanrui">環瑞館</button>
+        </div>
+        <div class="draft-month-tabs" aria-label="月份">
+          <button type="button" data-draft-month="1月">1月</button>
+          <button type="button" data-draft-month="2月">2月</button>
+          <button type="button" data-draft-month="3月">3月</button>
+          <button type="button" data-draft-month="4月">4月</button>
+          <button type="button" data-draft-month="5月">5月</button>
+          <button class="active" type="button" data-draft-month="6月">6月</button>
+          <button type="button" data-draft-month="7月">7月</button>
+          <button type="button" data-draft-month="8月">8月</button>
+          <button type="button" data-draft-month="9月">9月</button>
+          <button type="button" data-draft-month="10月">10月</button>
+          <button type="button" data-draft-month="11月">11月</button>
+          <button type="button" data-draft-month="12月">12月</button>
+        </div>
+      </section>
+
+      <main class="draft-schedule-layout">
+        <section class="draft-list-panel">
+          <div class="draft-list-head">
+            <div>
+              <p class="eyebrow" id="draftListEyebrow">台中館 / 6月</p>
+              <h2 id="draftListTitle">今日該貼</h2>
+            </div>
+            <span class="mini-pill" id="draftListCount">0 則</span>
+          </div>
+          <div class="draft-list" id="draftList"></div>
+        </section>
+
+        <section class="draft-reader-panel" id="draftReader">
+          <div class="draft-empty-state">
+            <i data-lucide="mouse-pointer-click"></i>
+            <h2>點左邊草稿</h2>
+            <p>右邊會出現可直接複製的訊息框。</p>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

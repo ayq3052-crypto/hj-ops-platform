@@ -1,0 +1,4 @@
+window.hjImportedPaymentData = {
+  taichung: {},
+  huanrui: {},
+};
