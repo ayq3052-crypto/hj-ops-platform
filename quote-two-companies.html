@@ -1,0 +1,1529 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>兩家公司合併報價</title>
+  <script src="./auth-gate.js?v=20260628-entrance-lock-1"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100svh;
+      color: #111111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      background: #f5f6f3;
+    }
+
+    main {
+      width: min(980px, calc(100% - 28px));
+      min-height: 100vh;
+      min-height: 100svh;
+      margin: 0 auto;
+      padding: 26px 0 40px;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+    }
+
+    .control-panel {
+      width: min(760px, 100%);
+      margin: 0 auto 16px;
+      padding: 10px;
+      border: 1px solid #d9e1e7;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 10px 26px rgba(35, 42, 55, 0.08);
+    }
+
+    .quote-sidebar-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e5eaef;
+    }
+
+    .home-brand-link {
+      position: relative;
+      display: inline-flex;
+      flex: 0 0 auto;
+      color: inherit;
+      text-decoration: none;
+      border-radius: 8px;
+    }
+
+    .home-brand-link::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      top: calc(100% + 8px);
+      z-index: 20;
+      transform: translateX(-50%) translateY(-2px);
+      min-width: max-content;
+      border: 1px solid #d4dae4;
+      border-radius: 6px;
+      background: #f3f4f6;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 6px 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    }
+
+    .home-brand-link:hover::after,
+    .home-brand-link:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .home-brand-link:focus-visible {
+      outline: 3px solid rgba(31, 122, 111, 0.18);
+      outline-offset: 3px;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: 8px;
+      background: #151a24;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .quote-sidebar-title span {
+      display: block;
+      color: #687083;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .quote-sidebar-title strong {
+      display: block;
+      margin-top: 4px;
+      color: #111827;
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1.1;
+    }
+
+    .tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      justify-content: center;
+      margin: 0;
+    }
+
+    .venue-tools {
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e5eaef;
+      margin-bottom: 8px;
+    }
+
+    .venue-tools button {
+      min-width: 76px;
+    }
+
+    .service-tools {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+      gap: 7px;
+    }
+
+    .service-tools:has(button:only-child) {
+      display: flex;
+      justify-content: center;
+    }
+
+    .service-tools button {
+      width: 100%;
+      min-height: 34px;
+      padding: 0 9px;
+      font-size: 14px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .service-tools:has(button:only-child) button {
+      width: auto;
+      min-width: 160px;
+    }
+
+    .back-link {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #cfd6df;
+      border-radius: 8px;
+      padding: 0 12px;
+      color: #344054;
+      background: #ffffff;
+      font-size: 14px;
+      font-weight: 800;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .service-select {
+      width: min(230px, 100%);
+      min-height: 32px;
+      border: 1px solid #cfd6df;
+      border-radius: 8px;
+      padding: 0 34px 0 10px;
+      color: #1f2933;
+      background: #ffffff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .service-select.active {
+      border-color: #1f7a6f;
+      color: #ffffff;
+      background: #1f7a6f;
+    }
+
+    button {
+      min-height: 36px;
+      border: 1px solid #cfd6df;
+      border-radius: 8px;
+      padding: 0 12px;
+      color: #1f2933;
+      background: #ffffff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      border-color: #1f7a6f;
+      color: #ffffff;
+      background: #1f7a6f;
+    }
+
+    body[data-venue="huanrui"] button[aria-pressed="true"],
+    body[data-venue="huanrui"] .service-select.active {
+      border-color: #ef8a52;
+      color: #9a461b;
+      background: #fff1e8;
+    }
+
+    .sheet {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: 30px 34px;
+      background: #ffffff;
+      box-shadow: 0 18px 48px rgba(35, 42, 55, 0.12);
+    }
+
+    .logo {
+      display: block;
+      width: 150px;
+      height: auto;
+      margin: 0 auto 4px;
+    }
+
+    h1 {
+      margin: 0 0 22px;
+      font-size: 34px;
+      line-height: 1.2;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    .quote-table {
+      border: 2px solid #7e928d;
+      border-collapse: separate;
+      border-spacing: 0;
+      border-radius: 8px;
+      margin-bottom: 28px;
+      overflow: hidden;
+      box-shadow: 0 12px 30px rgba(33, 42, 54, 0.08);
+    }
+
+    .quote-table th,
+    .quote-table td {
+      border: 0;
+      border-bottom: 1px solid #d8e0df;
+      padding: 13px 14px;
+      vertical-align: middle;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .quote-table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .quote-table th:first-child {
+      width: 66%;
+      background: #245d56;
+      color: #ffffff;
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .quote-table th:last-child {
+      width: 34%;
+      background: #dfead4;
+      color: #17251f;
+      text-align: center;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .quote-table td + td,
+    .quote-table th + th {
+      border-left: 1px solid #d8e0df;
+    }
+
+    .quote-title-row td {
+      background: #f6faf8;
+      border-bottom-color: #cfd9d7;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: 21px;
+      font-weight: 900;
+      color: #17251f;
+    }
+
+    .editable {
+      min-height: 1.4em;
+      outline: none;
+    }
+
+    .editable:focus {
+      box-shadow: inset 0 0 0 2px rgba(31, 122, 111, 0.4);
+      background: #f7fbfa;
+    }
+
+    .desc {
+      text-align: center;
+      white-space: pre-line;
+    }
+
+    .structured-desc {
+      display: grid;
+      gap: 4px;
+      text-align: center;
+      white-space: normal;
+    }
+
+    .company-service-cell {
+      display: grid;
+      grid-template-columns: 136px minmax(0, 1fr);
+      gap: 20px;
+      align-items: stretch;
+      text-align: left;
+    }
+
+    .company-name-box {
+      display: grid;
+      min-height: 86px;
+      place-items: center;
+      border-right: 1px solid #cfd9d7;
+      color: #17251f;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .company-details {
+      display: grid;
+      gap: 7px;
+      align-content: center;
+      padding-left: 8px;
+      text-align: left;
+    }
+
+    .amount-breakdown {
+      display: grid;
+      gap: 7px;
+      text-align: left;
+    }
+
+    .amount-line {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .amount-line > :last-child {
+      justify-self: end;
+      text-align: right;
+    }
+
+    .amount-label {
+      color: #344054;
+      font-weight: 900;
+    }
+
+    .amount-breakdown .inline-number,
+    .amount-breakdown .amount-input {
+      text-align: right;
+    }
+
+    .amount-breakdown .inline-number {
+      width: 86px;
+    }
+
+    .amount-total {
+      padding-top: 6px;
+      border-top: 1px solid #d8e0df;
+    }
+
+    .inline-number {
+      width: 72px;
+      min-height: 28px;
+      border: 1px solid #cfd6df;
+      border-radius: 6px;
+      padding: 2px 6px;
+      color: #111111;
+      background: #ffffff;
+      font: inherit;
+      font-weight: 800;
+      text-align: center;
+      outline: none;
+    }
+
+    .inline-number.months {
+      width: 54px;
+    }
+
+    .inline-number:focus {
+      border-color: #1f7a6f;
+      box-shadow: 0 0 0 3px rgba(31, 122, 111, 0.14);
+    }
+
+    body.pdf-exporting .control-panel,
+    body.pdf-exporting .tools,
+    body.pdf-exporting .table-actions {
+      display: none !important;
+    }
+
+    body.pdf-exporting .sheet {
+      box-shadow: none;
+    }
+
+    body.pdf-exporting .editable:focus,
+    body.pdf-exporting .amount-input:focus,
+    body.pdf-exporting .inline-number:focus {
+      box-shadow: none;
+      background: transparent;
+    }
+
+    body.pdf-exporting .pdf-static-field {
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      background: transparent !important;
+      outline: none !important;
+      color: inherit;
+      font: inherit;
+    }
+
+    body.pdf-exporting .pdf-static-field.inline-number {
+      display: inline-flex;
+      width: auto;
+      min-width: 34px;
+      min-height: 1.2em;
+      padding: 0 2px;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      text-align: center;
+      vertical-align: baseline;
+    }
+
+    body.pdf-exporting .pdf-static-field.amount-input {
+      display: flex;
+      width: 100%;
+      min-height: 44px;
+      padding: 0;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      text-align: center;
+    }
+
+    .amount-input {
+      width: 100%;
+      min-height: 44px;
+      border: 0;
+      padding: 0;
+      color: #111111;
+      background: transparent;
+      font: inherit;
+      font-size: 22px;
+      text-align: center;
+      outline: none;
+    }
+
+    .item-row td:last-child {
+      background: #fbfcfb;
+    }
+
+    .total-row td {
+      background: #fffaf1;
+      border-top: 2px solid #245d56;
+    }
+
+    .future-row td {
+      background: #f6faf8;
+      border-top: 1px solid #d8e0df;
+      color: #253b36;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .future-row .amount-input {
+      color: #253b36;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .amount-input:focus {
+      box-shadow: inset 0 0 0 2px rgba(31, 122, 111, 0.4);
+      background: #f7fbfa;
+    }
+
+    .label-red {
+      color: #c21f32;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .note-red {
+      color: #b42318;
+      background: #fff4f2;
+      font-size: 17px;
+      font-weight: 900;
+      text-align: center;
+    }
+
+    .summary-main {
+      display: grid;
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .summary-main strong {
+      color: #b42318;
+      font-size: 1.08em;
+    }
+
+    .note-row td {
+      background: #fff4f2;
+    }
+
+    .table-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin: -18px 0 22px;
+    }
+
+    .small-action {
+      min-height: 34px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .bottom-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 8px;
+    }
+
+    .info-card {
+      border: 2px solid #9aa8b5;
+      border-radius: 8px;
+      padding: 14px 16px;
+      background: #fbfcfb;
+    }
+
+    .info-card.full {
+      grid-column: 1 / -1;
+    }
+
+    .info-title {
+      margin-bottom: 10px;
+      color: #1f2933;
+      font-size: 17px;
+      font-weight: 900;
+    }
+
+    .info-lines {
+      display: grid;
+      gap: 7px;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .info-line {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .info-label {
+      color: #667085;
+      font-weight: 700;
+    }
+
+    .terms {
+      display: grid;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 15px;
+      line-height: 1.55;
+    }
+
+    .terms li {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .terms li::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      margin-top: 9px;
+      border-radius: 999px;
+      background: #1f7a6f;
+    }
+
+    .remarks-list {
+      columns: 2;
+      column-gap: 26px;
+      font-size: 14px;
+      line-height: 1.68;
+    }
+
+    .remarks-list p {
+      break-inside: avoid;
+      margin: 0 0 6px;
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 7mm 20mm;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: auto;
+        background: #ffffff;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+
+      main {
+        width: 100%;
+        min-height: auto;
+        padding: 0;
+        display: block;
+      }
+
+      .control-panel,
+      .tools,
+      .table-actions {
+        display: none;
+      }
+
+      .sheet {
+        width: 100%;
+        margin: 0 auto;
+        box-shadow: none;
+        padding: 0;
+      }
+
+      input,
+      select,
+      textarea,
+      .inline-number,
+      .amount-input {
+        appearance: none;
+        -webkit-appearance: none;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: #111111 !important;
+        background: transparent !important;
+      }
+
+      select {
+        background-image: none !important;
+      }
+
+      input::-webkit-inner-spin-button,
+      input::-webkit-outer-spin-button {
+        appearance: none;
+        -webkit-appearance: none;
+        margin: 0;
+      }
+
+      .logo {
+        width: 76px;
+        margin-bottom: 1px;
+      }
+
+      h1 {
+        margin: 0 0 7px;
+        font-size: 26px;
+        line-height: 1.15;
+        font-weight: 700;
+      }
+
+      .quote-table {
+        margin-bottom: 7px;
+        border-radius: 4px;
+        box-shadow: none;
+        border-color: #536f69;
+        border-width: 2px;
+      }
+
+      .quote-table th,
+      .quote-table td {
+        padding: 5px 8px;
+        font-size: 12.8px;
+        line-height: 1.24;
+        border-bottom-color: #c3cfcc;
+      }
+
+      .quote-table th:first-child,
+      .quote-table th:last-child {
+        font-size: 14px;
+      }
+
+      .section-title {
+        font-size: 14px;
+      }
+
+      .structured-desc {
+        gap: 1px;
+      }
+
+      .company-service-cell {
+        grid-template-columns: 104px minmax(0, 1fr);
+        gap: 14px;
+      }
+
+      .company-name-box {
+        min-height: 54px;
+        font-size: 11.8px;
+        line-height: 1.28;
+      }
+
+      .company-details {
+        gap: 3px;
+        padding-left: 5px;
+      }
+
+      .amount-breakdown {
+        gap: 2px;
+      }
+
+      .amount-line {
+        grid-template-columns: 60px minmax(0, 1fr);
+        gap: 4px;
+      }
+
+      .amount-total {
+        padding-top: 3px;
+      }
+
+      .inline-number {
+        width: 58px;
+        min-height: 22px;
+        border: 0;
+        border-radius: 0;
+        padding: 0 2px;
+        font-size: 12.8px;
+        background: transparent;
+      }
+
+      .inline-number.months {
+        width: 36px;
+      }
+
+      .amount-input {
+        min-height: 24px;
+        font-size: 20px;
+        font-weight: 500;
+      }
+
+      .total-row td {
+        border-top-width: 2px;
+      }
+
+      .future-row .amount-input {
+        font-size: 17px;
+      }
+
+      .note-red {
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .summary-main {
+        gap: 2px;
+        padding: 2px 0 3px;
+      }
+
+      .bottom-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 7px;
+        margin-top: 6px;
+      }
+
+      .info-card {
+        border-radius: 4px;
+        border-width: 2px;
+        padding: 7px 9px;
+        border-color: #718494;
+        background: #ffffff;
+        break-inside: avoid;
+      }
+
+      .info-card:not(.full) {
+        min-height: 28mm;
+      }
+
+      .info-card.full {
+        display: block;
+        min-height: auto;
+        border: 2px solid #718494;
+        border-radius: 4px;
+        padding: 7px 9px 9px;
+        background: #ffffff;
+        break-inside: auto;
+        page-break-inside: auto;
+      }
+
+      .info-card.full .info-title {
+        margin-bottom: 5px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #d7dde6;
+      }
+
+      .info-title {
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+        border-bottom: 1px solid #d7dde6;
+        color: #111111;
+        font-size: 12.6px;
+      }
+
+      .info-lines {
+        gap: 2px;
+        font-size: 11.2px;
+        line-height: 1.28;
+      }
+
+      .info-line {
+        grid-template-columns: 64px minmax(0, 1fr);
+        gap: 7px;
+      }
+
+      .info-label {
+        color: #344054;
+        font-weight: 800;
+      }
+
+      .remarks-list {
+        columns: 2;
+        column-gap: 15px;
+        width: 100%;
+        margin: 0;
+        font-size: 10.8px;
+        line-height: 1.32;
+        color: #111111;
+      }
+
+      .remarks-list p {
+        break-inside: avoid;
+        margin-bottom: 3px;
+        padding-left: 1.45em;
+        text-indent: -1.45em;
+      }
+
+      .editable {
+        min-height: 0;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .sheet {
+        padding: 22px 14px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .quote-table th,
+      .quote-table td {
+        font-size: 15px;
+      }
+
+      .amount-input {
+        font-size: 18px;
+      }
+
+      .bottom-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .info-line {
+        grid-template-columns: 82px minmax(0, 1fr);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="control-panel" aria-label="報價單控制列">
+      <div class="quote-sidebar-head">
+        <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
+          <span class="brand-mark">HJ</span>
+        </a>
+        <div class="quote-sidebar-title">
+          <span>Hour Jungle</span>
+          <strong>報價單</strong>
+        </div>
+      </div>
+
+      <nav class="tools venue-tools" aria-label="館別">
+        <button type="button" data-venue="taichung" aria-pressed="true">台中館</button>
+        <button type="button" data-venue="huanrui" aria-pressed="false">環瑞館</button>
+      </nav>
+
+      <nav class="tools service-tools" aria-label="服務項目">
+        <a class="back-link" id="singleCompanyLink" href="quote.html">← 回報價單</a>
+        <select class="service-select active" id="registrationModeSelect" aria-label="營業登記">
+          <option value="single">營業登記（單家公司）</option>
+          <option value="two" selected>營業登記（兩家公司）</option>
+        </select>
+      </nav>
+    </div>
+
+    <section class="sheet">
+      <img class="logo" src="hour-jungle-logo.png" alt="Hour Jungle">
+      <h1 data-quote-title>HourJungle 台中館報價單</h1>
+
+      <table class="quote-table" aria-label="報價明細">
+        <thead>
+          <tr>
+            <th>服務項目</th>
+            <th>請款金額 (NTD)含稅</th>
+          </tr>
+        </thead>
+        <tbody id="quoteBody"></tbody>
+      </table>
+
+      <div class="table-actions">
+        <button class="small-action" type="button" id="addRowButton">新增公司</button>
+        <button class="small-action" type="button" id="pdfButton">下載PDF</button>
+        <button class="small-action" type="button" id="printButton">列印</button>
+      </div>
+
+      <section class="bottom-grid" aria-label="報價單補充資訊">
+        <div class="info-card">
+          <div class="info-title">匯款資訊</div>
+          <div class="info-lines">
+            <div class="info-line">
+              <span class="info-label">帳戶名稱</span>
+              <div class="editable" contenteditable="true" data-bank="accountName">你的空間有限公司</div>
+            </div>
+            <div class="info-line">
+              <span class="info-label">銀行名稱</span>
+              <div class="editable" contenteditable="true" data-bank="bankName">永豐商業銀行(南台中分行)</div>
+            </div>
+            <div class="info-line">
+              <span class="info-label">行庫代號</span>
+              <div class="editable" contenteditable="true" data-bank="bankCode">807</div>
+            </div>
+            <div class="info-line">
+              <span class="info-label">帳號</span>
+              <div class="editable" contenteditable="true" data-bank="accountNumber">0380180 0183399</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-card">
+          <div class="info-title">聯絡資訊</div>
+          <div class="info-lines">
+            <div class="info-line">
+              <span class="info-label">Email</span>
+              <div class="editable" contenteditable="true">wtxg@hourjungle.com</div>
+            </div>
+            <div class="info-line">
+              <span class="info-label">電話</span>
+              <div class="editable" contenteditable="true">04-23760282</div>
+            </div>
+            <div class="info-line">
+              <span class="info-label">說明</span>
+              <div class="editable" contenteditable="true">匯款後請回傳憑證，以便進行確認。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-card full">
+          <div class="info-title">備註</div>
+          <div class="remarks-list">
+            <p class="editable" contenteditable="true">1. 報價有效期間:即日起30天內。</p>
+            <p class="editable" contenteditable="true">2. 獨家！威立方（V-CUBE）集團，指定合作夥伴Ｅ樂堂企業內訓系統會員免費獨享。</p>
+            <p class="editable" contenteditable="true">3. 超過百間以上蝦皮店家登記指定選擇hourjungle，可登記使用免用統一發票 (限無店面零售業)電商最最划算的選擇</p>
+            <p class="editable" contenteditable="true">4. 全台灣唯一敢在合約內註明如因我方因素主關機關不予核准，我們全額退費!</p>
+            <p class="editable" contenteditable="true">5. 多位知名客戶阿里巴巴、UBER、唐吉軻德、arrow（全球五百大企業）指定選擇解決方案。</p>
+            <p class="editable" contenteditable="true">6. 獨家!蝦皮商城免費健檢 ！提供金、物流、包材、bsmi、財稅法一站式解決方案。再送一年免費稅務諮詢</p>
+            <p class="editable" contenteditable="true">7. 獨家！勞動部ＴＴＱＳ認證單位，不定期超過百種創業課程會員免費獨享</p>
+            <p class="editable" contenteditable="true">8. 獨家經濟部中小企業處認證國際育成中心！</p>
+            <p class="editable" contenteditable="true">9. 獨家！國科會科研平台輔導業師進駐</p>
+            <p class="editable" contenteditable="true">10、有任何問題請洽詢公司信箱wtxg@hourjungle.com或電話04-23760282。</p>
+            <p class="editable" contenteditable="true">本公司之報價不包含銀行匯款手續費，匯款後請閣下將匯款憑證回傳本公司，以便進行確認。</p>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="vendor/html2canvas.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js"></script>
+  <script src="vendor/hour-jungle-logo-data.js"></script>
+  <script>
+    const venues = {
+      taichung: {
+        label: "台中館",
+        servicePrefix: "台中",
+        bank: {
+          accountName: "你的空間有限公司",
+          bankName: "永豐商業銀行(南台中分行)",
+          bankCode: "807",
+          accountNumber: "0380180 0183399"
+        }
+      },
+      huanrui: {
+        label: "環瑞館",
+        servicePrefix: "環瑞",
+        bank: {
+          accountName: "樞紐前沿股份有限公司",
+          bankName: "台北富邦銀行 國美分行",
+          bankCode: "012",
+          accountNumber: "8212000 0205049"
+        }
+      }
+    };
+
+    const templates = {
+      twoCompanies: {
+        title: "兩家公司營業登記合約",
+        rows: [
+          {
+            type: "companyPackage",
+            companyName: "公司行號一（請填）",
+            serviceName: "(台中)營業登記",
+            unitPrice: 1800,
+            contractMonths: 12,
+            months: 6,
+            deposit: 6000,
+            note: "6M繳費 / 本期先收前6個月"
+          },
+          {
+            type: "companyPackage",
+            companyName: "公司行號二（請填）",
+            serviceName: "(台中)營業登記",
+            unitPrice: 1800,
+            contractMonths: 12,
+            months: 6,
+            deposit: 6000,
+            note: "6M繳費 / 本期先收前6個月"
+          }
+        ],
+        note: "押金第一期收取，後續期數不再收押金。"
+      }
+    };
+
+    const venueButtons = [...document.querySelectorAll("[data-venue]")];
+    const serviceButtons = [...document.querySelectorAll("[data-service]")];
+    const quoteTitle = document.querySelector("[data-quote-title]");
+    const quoteBody = document.querySelector("#quoteBody");
+    const addRowButton = document.querySelector("#addRowButton");
+    const pdfButton = document.querySelector("#pdfButton");
+    const printButton = document.querySelector("#printButton");
+    const registrationModeSelect = document.querySelector("#registrationModeSelect");
+    const singleCompanyLink = document.querySelector("#singleCompanyLink");
+    const requestedVenue = new URLSearchParams(window.location.search).get("venue");
+    let currentVenue = venues[requestedVenue] ? requestedVenue : "taichung";
+    let currentService = "twoCompanies";
+
+    const venueServiceName = (value) => {
+      return String(value).replace(/\((台中|環瑞)\)/g, `(${venues[currentVenue].servicePrefix})`);
+    };
+
+    const formatNumber = (value) => {
+      return new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 0
+      }).format(Number(value || 0));
+    };
+
+    const parseNumber = (value) => {
+      return Number(String(value).replace(/[^\d.-]/g, "")) || 0;
+    };
+
+    const periodName = (value) => {
+      const names = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+      return names[value] || formatNumber(value);
+    };
+
+    const paymentCycleLabel = (months) => {
+      if (months === 6) return "6M";
+      if (months === 12) return "Y";
+      if (months === 24) return "2Y";
+      if (months === 36) return "3Y";
+      return `${formatNumber(months)}M`;
+    };
+
+    const futurePeriodLabel = (periodCount) => {
+      if (periodCount <= 0) return "已無後續請款";
+      if (periodCount === 1) return "第二期";
+      return `第二至第${periodName(periodCount + 1)}期`;
+    };
+
+    const createRow = (row) => {
+      if (row.type === "monthly") return createMonthlyRow(row);
+      if (row.type === "linkedAmount") return createLinkedAmountRow(row);
+      if (row.type === "companyPackage") return createCompanyPackageRow(row);
+
+      const tr = document.createElement("tr");
+      tr.className = "item-row";
+      tr.innerHTML = `
+        <td><div class="editable desc" contenteditable="true"></div></td>
+        <td><input class="amount-input" inputmode="numeric" value="${formatNumber(row.amount)}"></td>
+      `;
+      tr.querySelector(".editable").textContent = row.text;
+      return tr;
+    };
+
+    const createMonthlyRow = (row) => {
+      const tr = document.createElement("tr");
+      tr.className = "item-row linked-row";
+      tr.dataset.calc = "monthly";
+      tr.innerHTML = `
+        <td>
+          <div class="structured-desc">
+            <div class="editable" contenteditable="true" data-field="serviceName"></div>
+            <div>
+              原價
+              <input class="inline-number" inputmode="numeric" data-role="originalPrice">
+              元　優惠價
+              <input class="inline-number" inputmode="numeric" data-role="unitPrice">
+              元/月
+            </div>
+            <div>
+              <span class="editable" contenteditable="true" data-field="note"></span>
+              ｜
+              <input class="inline-number months" inputmode="numeric" data-role="months">
+              個月
+            </div>
+          </div>
+        </td>
+        <td><input class="amount-input" inputmode="numeric" readonly data-row-total value="0"></td>
+      `;
+      tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
+      tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice);
+      tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
+      tr.querySelector('[data-field="note"]').textContent = row.note;
+      tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
+      return tr;
+    };
+
+    const createCompanyPackageRow = (row) => {
+      const tr = document.createElement("tr");
+      tr.className = "item-row linked-row";
+      tr.dataset.calc = "companyPackage";
+      tr.innerHTML = `
+        <td>
+          <div class="company-service-cell">
+            <div class="company-name-box">
+              <span class="editable" contenteditable="true" data-field="companyName"></span>
+            </div>
+            <div class="company-details">
+              <div>
+                <span class="editable" contenteditable="true" data-field="serviceName"></span>
+              </div>
+              <div>
+                合約
+                <input class="inline-number months" inputmode="numeric" data-role="contractMonths">
+                個月　｜　本次
+                <input class="inline-number months" inputmode="numeric" data-role="months">
+                個月
+              </div>
+              <div>
+                月費
+                <input class="inline-number" inputmode="numeric" data-role="unitPrice">
+                元/月
+              </div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="amount-breakdown">
+            <div class="amount-line">
+              <span class="amount-label">本期費用</span>
+              <strong data-service-total>0</strong>
+            </div>
+            <div class="amount-line">
+              <span class="amount-label">押金</span>
+              <input class="inline-number" inputmode="numeric" data-role="deposit">
+            </div>
+            <div class="amount-line amount-total">
+              <span class="amount-label">小計</span>
+              <input class="amount-input" inputmode="numeric" readonly data-row-total value="0">
+            </div>
+          </div>
+        </td>
+      `;
+      tr.querySelector('[data-field="companyName"]').textContent = row.companyName;
+      tr.querySelector('[data-field="serviceName"]').textContent = row.serviceName;
+      tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
+      tr.querySelector('[data-role="contractMonths"]').value = formatNumber(row.contractMonths || 12);
+      tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
+      tr.querySelector('[data-role="deposit"]').value = formatNumber(row.deposit);
+      return tr;
+    };
+
+    const createLinkedAmountRow = (row) => {
+      const tr = document.createElement("tr");
+      tr.className = "item-row linked-row";
+      tr.dataset.calc = "linkedAmount";
+      tr.innerHTML = `
+        <td>
+          <div class="structured-desc">
+            <div>
+              <span class="editable" contenteditable="true" data-field="label"></span>
+              <input class="inline-number" inputmode="numeric" data-role="linkedAmount">
+              元
+            </div>
+          </div>
+        </td>
+        <td><input class="amount-input" inputmode="numeric" readonly data-row-total value="0"></td>
+      `;
+      tr.querySelector('[data-field="label"]').textContent = row.text;
+      tr.querySelector('[data-role="linkedAmount"]').value = formatNumber(row.amount);
+      return tr;
+    };
+
+    const calculateLinkedRow = (row) => {
+      const output = row.querySelector("[data-row-total]");
+      if (!output) return;
+
+      if (row.dataset.calc === "monthly") {
+        const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
+        const months = parseNumber(row.querySelector('[data-role="months"]').value);
+        output.value = formatNumber(unitPrice * months);
+      }
+
+      if (row.dataset.calc === "linkedAmount") {
+        const amount = parseNumber(row.querySelector('[data-role="linkedAmount"]').value);
+        output.value = formatNumber(amount);
+      }
+
+      if (row.dataset.calc === "companyPackage") {
+        const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
+        const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]').value);
+        const months = parseNumber(row.querySelector('[data-role="months"]').value);
+        const deposit = parseNumber(row.querySelector('[data-role="deposit"]').value);
+        const serviceTotal = unitPrice * months;
+        const nextMonths = Math.max(contractMonths - months, 0);
+        const nextTotal = unitPrice * nextMonths;
+        const serviceTotalLabel = row.querySelector("[data-service-total]");
+        const currentMonthsLabel = row.querySelector("[data-current-months]");
+        const nextMonthsLabel = row.querySelector("[data-next-months]");
+        const nextTotalLabel = row.querySelector("[data-next-row-total]");
+        if (currentMonthsLabel) currentMonthsLabel.textContent = formatNumber(months);
+        if (serviceTotalLabel) serviceTotalLabel.textContent = formatNumber(serviceTotal);
+        if (nextMonthsLabel) nextMonthsLabel.textContent = formatNumber(nextMonths);
+        if (nextTotalLabel) nextTotalLabel.textContent = formatNumber(nextTotal);
+        row.dataset.nextTotal = String(nextTotal);
+        row.dataset.nextMonths = String(nextMonths);
+        row.dataset.currentMonths = String(months);
+        row.dataset.unitPrice = String(unitPrice);
+        output.value = formatNumber(serviceTotal + deposit);
+      }
+    };
+
+    const calculateLinkedRows = () => {
+      quoteBody.querySelectorAll(".linked-row").forEach(calculateLinkedRow);
+    };
+
+    const calculate = () => {
+      calculateLinkedRows();
+      const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total]):not([data-next-total])")]
+        .reduce((sum, input) => sum + parseNumber(input.value), 0);
+      const packageRows = [...quoteBody.querySelectorAll(".linked-row[data-calc='companyPackage']")];
+      const rowInfos = packageRows.map((row) => {
+        const currentMonths = Math.max(parseNumber(row.dataset.currentMonths), 0);
+        const nextMonths = Math.max(parseNumber(row.dataset.nextMonths), 0);
+        const unitPrice = Math.max(parseNumber(row.dataset.unitPrice), 0);
+        return { currentMonths, nextMonths, unitPrice };
+      });
+      const nextTotal = rowInfos.reduce((sum, info) => sum + info.unitPrice * info.nextMonths, 0);
+      const futurePeriods = rowInfos.length
+        ? Math.max(...rowInfos.map((info) => info.currentMonths ? Math.ceil(info.nextMonths / info.currentMonths) : 0))
+        : 0;
+      const futureCycleTotal = rowInfos.reduce((sum, info) => {
+        return sum + info.unitPrice * Math.min(info.currentMonths, info.nextMonths);
+      }, 0);
+      const cycleMonths = rowInfos.find((info) => info.currentMonths > 0)?.currentMonths || 0;
+      const cycleLabel = paymentCycleLabel(cycleMonths);
+      const periodLabel = futurePeriodLabel(futurePeriods);
+      const companyCount = packageRows.length;
+      const totalInput = quoteBody.querySelector("[data-total]");
+      const nextTotalInput = quoteBody.querySelector("input[data-next-total]");
+      const summaryText = quoteBody.querySelector("[data-summary-text]");
+      const futureRowLabel = quoteBody.querySelector("[data-future-row-label]");
+      if (totalInput) totalInput.value = formatNumber(total);
+      if (nextTotalInput) {
+        nextTotalInput.value = formatNumber(futureCycleTotal);
+        nextTotalInput.setAttribute("value", formatNumber(futureCycleTotal));
+      }
+      if (futureRowLabel) {
+        futureRowLabel.textContent = futurePeriods > 0
+          ? `${periodLabel}請款金額（${cycleLabel}）`
+          : "已無後續請款";
+      }
+      if (summaryText) {
+        const futureLine = futurePeriods <= 0
+          ? "已無後續請款"
+          : futurePeriods === 1
+            ? `${periodLabel}請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>（${formatNumber(companyCount)}間公司合計）`
+            : `${periodLabel}請款金額：每期 <strong>${formatNumber(futureCycleTotal)} 元</strong>（${formatNumber(companyCount)}間公司合計）`;
+        summaryText.innerHTML = `
+          <div>說明：第一期請款金額 <strong>${formatNumber(total)} 元</strong></div>
+          <div>${futureLine}</div>
+        `;
+      }
+    };
+
+    const bindAmountInputs = () => {
+      quoteBody.querySelectorAll(".amount-input").forEach((input) => {
+        input.addEventListener("input", calculate);
+        input.addEventListener("blur", () => {
+          input.value = formatNumber(parseNumber(input.value));
+          calculate();
+        });
+      });
+      quoteBody.querySelectorAll(".inline-number").forEach((input) => {
+        input.addEventListener("input", calculate);
+        input.addEventListener("blur", () => {
+          input.value = formatNumber(parseNumber(input.value));
+          calculate();
+        });
+      });
+    };
+
+    const renderService = (serviceKey) => {
+      currentService = serviceKey;
+      const template = templates[serviceKey];
+      quoteBody.innerHTML = "";
+
+      const titleRow = document.createElement("tr");
+      titleRow.className = "quote-title-row";
+      titleRow.innerHTML = `<td class="section-title" colspan="2"><div class="editable" contenteditable="true"></div></td>`;
+      titleRow.querySelector(".editable").textContent = template.title;
+      quoteBody.appendChild(titleRow);
+
+      template.rows.forEach((row) => quoteBody.appendChild(createRow(row)));
+
+      const totalRow = document.createElement("tr");
+      totalRow.className = "total-row";
+      totalRow.innerHTML = `
+        <td class="label-red"><div class="editable" contenteditable="true">本期</div></td>
+        <td><input class="amount-input" data-total readonly value="0"></td>
+      `;
+      quoteBody.appendChild(totalRow);
+
+      const nextRow = document.createElement("tr");
+      nextRow.className = "future-row";
+      nextRow.innerHTML = `
+        <td><div class="editable" contenteditable="true" data-future-row-label>第二期請款金額（6M）</div></td>
+        <td><input class="amount-input" data-next-total readonly value="0"></td>
+      `;
+      quoteBody.appendChild(nextRow);
+
+      const noteRow = document.createElement("tr");
+      noteRow.className = "note-row";
+      noteRow.innerHTML = `<td class="note-red" colspan="2"><div class="summary-main" data-summary-text></div><div class="editable" contenteditable="true"></div></td>`;
+      noteRow.querySelector(".editable").textContent = template.note;
+      quoteBody.appendChild(noteRow);
+
+      serviceButtons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.service === serviceKey));
+      });
+
+      bindAmountInputs();
+      calculate();
+    };
+
+    const updateVisibleVenueText = () => {
+      quoteBody.querySelectorAll('[data-field="serviceName"]').forEach((field) => {
+        field.textContent = venueServiceName(field.textContent);
+      });
+    };
+
+    const applyVenue = (venueKey) => {
+      currentVenue = venueKey;
+      document.body.dataset.venue = venueKey;
+      const venue = venues[venueKey];
+      quoteTitle.textContent = `HourJungle ${venue.label}報價單`;
+      document.title = `HourJungle ${venue.label}報價單`;
+      Object.entries(venue.bank).forEach(([field, value]) => {
+        const target = document.querySelector(`[data-bank="${field}"]`);
+        if (target) target.textContent = value;
+      });
+      venueButtons.forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.venue === venueKey));
+      });
+      if (singleCompanyLink) {
+        singleCompanyLink.href = `quote.html?venue=${encodeURIComponent(venueKey)}`;
+      }
+      updateVisibleVenueText();
+    };
+
+    addRowButton.addEventListener("click", () => {
+      const totalRow = quoteBody.querySelector("[data-total]").closest("tr");
+      totalRow.before(createRow({
+        type: "companyPackage",
+        companyName: "新增公司行號（請填）",
+        serviceName: `(${venues[currentVenue].servicePrefix})營業登記`,
+        unitPrice: 1800,
+        contractMonths: 12,
+        months: 6,
+        deposit: 6000,
+        note: ""
+      }));
+      bindAmountInputs();
+      calculate();
+    });
+
+    const preparePdfClone = (documentClone) => {
+      const logo = documentClone.querySelector(".logo");
+      if (logo && window.HOUR_JUNGLE_LOGO_DATA) logo.src = window.HOUR_JUNGLE_LOGO_DATA;
+
+      documentClone.querySelectorAll("input, select").forEach((control) => {
+        const span = documentClone.createElement("span");
+        span.className = `pdf-static-field ${control.className || ""}`.trim();
+        if (control.tagName === "SELECT") {
+          const selected = control.options[control.selectedIndex];
+          span.textContent = selected ? selected.textContent.trim() : "";
+        } else {
+          span.textContent = control.value || control.getAttribute("value") || "";
+        }
+        control.replaceWith(span);
+      });
+    };
+
+    const exportPdf = async () => {
+      if (!window.html2canvas || !window.jspdf) {
+        alert("PDF 功能尚未載入，請重新整理後再試。");
+        return;
+      }
+
+      pdfButton.disabled = true;
+      pdfButton.textContent = "產生中";
+      document.body.classList.add("pdf-exporting");
+
+      try {
+        const sheet = document.querySelector(".sheet");
+        const canvas = await window.html2canvas(sheet, {
+          scale: 2,
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          imageTimeout: 0,
+          onclone: preparePdfClone
+        });
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const pageWidth = 210;
+        const pageHeight = 297;
+        const margin = 8;
+        const maxWidth = pageWidth - margin * 2;
+        const maxHeight = pageHeight - margin * 2;
+        const ratio = canvas.height / canvas.width;
+        let imageWidth = maxWidth;
+        let imageHeight = imageWidth * ratio;
+        if (imageHeight > maxHeight) {
+          imageHeight = maxHeight;
+          imageWidth = imageHeight / ratio;
+        }
+        const x = (pageWidth - imageWidth) / 2;
+        const y = (pageHeight - imageHeight) / 2;
+        pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imageWidth, imageHeight, undefined, "FAST");
+        const activeService = document.querySelector("[data-service][aria-pressed='true']")?.textContent.trim()
+          || document.querySelector("[data-mode-label]")?.textContent.trim()
+          || "報價單";
+        const fileTitle = `${quoteTitle.textContent.trim()}-${activeService}`.replace(/[\\/:*?"<>|]/g, "-");
+        pdf.save(`${fileTitle}.pdf`);
+      } finally {
+        document.body.classList.remove("pdf-exporting");
+        pdfButton.disabled = false;
+        pdfButton.textContent = "下載PDF";
+      }
+    };
+
+    pdfButton.addEventListener("click", exportPdf);
+    printButton.addEventListener("click", () => window.print());
+    registrationModeSelect.addEventListener("change", () => {
+      if (registrationModeSelect.value === "single") {
+        window.location.href = `quote.html?venue=${encodeURIComponent(currentVenue)}`;
+      }
+    });
+
+    venueButtons.forEach((button) => {
+      button.addEventListener("click", () => applyVenue(button.dataset.venue));
+    });
+
+    serviceButtons.forEach((button) => {
+      button.addEventListener("click", () => renderService(button.dataset.service));
+    });
+
+    renderService(currentService);
+    applyVenue(currentVenue);
+  </script>
+</body>
+</html>
