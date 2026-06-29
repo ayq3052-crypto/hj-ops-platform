@@ -1222,6 +1222,7 @@ function renderWorkplaceContractDraft(values, type) {
         "乙方不得以共享座位服務作為公司登記地址；如需營業登記服務，應另行簽訂營業登記合約。",
         "甲乙雙方僅有契約履行之責，乙方如與第三人有債務糾紛或法律責任，由乙方自行負責，與甲方無關。",
         "費用應於約定日前繳納，不得以任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。",
+        "乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。",
       ]
     : [
         "乙方除水電費、管理費、網路費及雙方另行約定費用外，營業上必須繳納之稅捐需自行負擔。",
@@ -1230,10 +1231,11 @@ function renderWorkplaceContractDraft(values, type) {
         "乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。",
         "本契約租賃期限未滿，乙方擬提前解約時，依雙方約定或一個月租金作為違約金。",
         "租金應於約定日前繳納，不得以任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。",
+        "甲方為使租賃標地物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案（此優惠方案為自由選擇），若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價32000元/月計算。",
       ];
 
   return `
-    <div class="html-contract-book ${versionClass}">
+    <div class="html-contract-book workplace-contract ${type}-contract ${versionClass}">
       <article class="html-contract-page">
         <header class="html-contract-logo">
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
@@ -1262,7 +1264,13 @@ function renderWorkplaceContractDraft(values, type) {
         <p class="indent-1">二、乙方於終止租約或租賃期滿不交還租賃標的或未完成點交，自終止租約或租賃期滿之翌日起，乙方應支付按日計算之違約金；所遺留設備或物品不搬者，視同乙方同意交由甲方處理。</p>
 
         <p class="contract-section">第七條：其他特約事項：</p>
-        ${otherClauses.map((clause, index) => `<p class="indent-1">${"一二三四五六七八九十"[index]}、${escapeHtml(clause)}</p>`).join("")}
+        ${otherClauses.map((clause, index) => `<p class="indent-1">${index + 1}、${escapeHtml(clause)}</p>`).join("")}
+
+        ${isSeat ? "" : `
+          <p class="contract-section">第八條：應受強制執行之事項：</p>
+          <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
+          <p class="indent-1">2、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
+        `}
 
         <footer>第1頁（共2頁）</footer>
       </article>
@@ -1272,9 +1280,11 @@ function renderWorkplaceContractDraft(values, type) {
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
         </header>
         ${renderOfficialStamp(values)}
-        <p class="contract-section">第八條：應受強制執行之事項：</p>
-        <p class="indent-1">一、租約到期、欠繳租金或費用、或終止租約生效時。</p>
-        <p class="indent-1">二、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
+        ${isSeat ? `
+          <p class="contract-section">第八條：應受強制執行之事項：</p>
+          <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
+          <p class="indent-1">2、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
+        ` : ""}
 
         ${renderWorkplaceDepositArticle(values, type)}
         <p>甲乙雙方應於租約終止或屆滿時完成費用結清、場域點交及物品清空。乙方如有積欠租金、費用、違約金或損害賠償，甲方得自應返還款項中扣除；不足部分乙方仍應補足。</p>

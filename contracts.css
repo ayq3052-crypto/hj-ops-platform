@@ -718,6 +718,39 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   margin-top: 7px;
 }
 
+.office-contract .html-contract-page:first-child {
+  line-height: 1.16;
+}
+
+.office-contract .html-contract-page:first-child p {
+  margin-bottom: 1.8px;
+}
+
+.office-contract .html-contract-page:first-child .contract-section {
+  margin-top: 8px;
+}
+
+.office-contract .html-contract-page:nth-child(2) {
+  line-height: 1.12;
+}
+
+.office-contract .html-contract-page:nth-child(2) .signature-block {
+  margin-top: 58px;
+}
+
+.office-contract .html-contract-page:nth-child(2) .signature-block .bank-lines {
+  margin-top: 28px;
+}
+
+.office-contract .html-contract-page:nth-child(2) .signature-block .payment-schedule-notice {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.office-contract .html-contract-page:nth-child(2) .lessee-block {
+  margin-top: 52px;
+}
+
 .html-contract-page .indent-1 {
   padding-left: 25px;
   text-indent: -25px;
