@@ -317,6 +317,12 @@
       color: #17251f;
     }
 
+    .compact-section-title .section-title {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      font-size: 18px;
+    }
+
     .editable {
       min-height: 1.4em;
       outline: none;
@@ -681,6 +687,22 @@
 
     .item-row td:last-child {
       background: #fbfcfb;
+    }
+
+    .compact-item-row td {
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .compact-item-row .desc {
+      min-height: 1.15em;
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .compact-item-row .amount-input {
+      min-height: 32px;
+      font-size: 20px;
     }
 
     .total-row td {
@@ -1462,6 +1484,8 @@
           },
           {
             title: "申辦公司地址遷移",
+            compactRows: true,
+            grandTotal: true,
             rows: [
               { text: "台中縣市", amount: 6000 },
               { text: "外縣市", amount: 8000 }
@@ -2213,6 +2237,12 @@
           .reduce((sum, itemInput) => sum + parseNumber(itemInput.value), 0);
         input.value = formatNumber(sectionTotal);
       });
+      const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total]):not([data-next-total])")]
+        .filter((input) => !input.hasAttribute("data-section-total") && !input.hasAttribute("data-section-future-total"))
+        .reduce((sum, input) => sum + parseNumber(input.value), 0);
+      quoteBody.querySelectorAll("[data-total]").forEach((input) => {
+        input.value = formatNumber(total);
+      });
       quoteBody.querySelectorAll("input[data-section-future-total]").forEach((input) => {
         const sectionId = input.closest("tr").dataset.sectionFutureTotal;
         const sectionRows = [...quoteBody.querySelectorAll(`.linked-row[data-section="${sectionId}"][data-calc='registrationContract']`)];
@@ -2250,9 +2280,6 @@
           summaryNote.textContent = "押金第一期收取，後續期數不再收押金。";
         }
       });
-      const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total]):not([data-next-total])")]
-        .filter((input) => !input.hasAttribute("data-section-total") && !input.hasAttribute("data-section-future-total"))
-        .reduce((sum, input) => sum + parseNumber(input.value), 0);
       const registrationRows = [...quoteBody.querySelectorAll(".linked-row[data-calc='registrationContract']")];
       const registrationInfos = registrationRows.map((row) => {
         const currentMonths = Math.max(parseNumber(row.dataset.currentMonths), 0);
@@ -2267,8 +2294,6 @@
         return sum + info.unitPrice * Math.min(info.currentMonths, info.nextMonths);
       }, 0);
       const cycleMonths = registrationInfos.find((info) => info.currentMonths > 0)?.currentMonths || 0;
-      const totalInput = quoteBody.querySelector("[data-total]");
-      if (totalInput) totalInput.value = formatNumber(total);
       const nextTotalInput = quoteBody.querySelector("input[data-next-total]");
       const summaryText = quoteBody.querySelector("[data-summary-text]");
       const futureRowLabel = quoteBody.querySelector("[data-future-row-label]");
@@ -2376,7 +2401,7 @@
         template.sections.forEach((section, index) => {
           const sectionId = `section-${index}`;
           const titleRow = document.createElement("tr");
-          titleRow.className = "quote-title-row";
+          titleRow.className = `quote-title-row${section.compactRows ? " compact-section-title" : ""}`;
           if (section.deleteAsGroup) titleRow.dataset.sectionTitle = sectionId;
           titleRow.innerHTML = `<td class="section-title" colspan="2"><div class="editable" contenteditable="true"></div></td>`;
           titleRow.querySelector(".editable").textContent = section.title;
@@ -2386,17 +2411,18 @@
             const rowElement = createRow(row);
             rowElement.dataset.section = sectionId;
             if (section.deleteAsGroup) rowElement.dataset.deleteGroup = sectionId;
+            if (section.compactRows) rowElement.classList.add("compact-item-row");
             quoteBody.appendChild(rowElement);
           });
 
           if (!section.hideSubtotal) {
             const sectionTotalRow = document.createElement("tr");
             sectionTotalRow.className = "total-row";
-            sectionTotalRow.dataset.sectionTotal = sectionId;
             sectionTotalRow.innerHTML = `
               <td class="label-red"><div class="editable" contenteditable="true"></div></td>
-              <td><input class="amount-input" data-section-total readonly value="0"></td>
+              <td><input class="amount-input" ${section.grandTotal ? "data-total" : "data-section-total"} readonly value="0"></td>
             `;
+            if (!section.grandTotal) sectionTotalRow.dataset.sectionTotal = sectionId;
             sectionTotalRow.querySelector(".editable").textContent = section.totalLabel || "合計";
             quoteBody.appendChild(sectionTotalRow);
           }
