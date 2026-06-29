@@ -2,7 +2,7 @@
   const authKey = "hj-home-auth-v2";
   const unlockKey = "hj-home-unlock-until-v2";
   const legacySessionKey = "hj-home-session-v1";
-  const isLocalTest = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+  const isLocalTest = window.location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 
   if (isLocalTest) return;
 

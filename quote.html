@@ -357,6 +357,20 @@
       text-align: center;
     }
 
+    .company-service-cell.company-name-hidden {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0;
+    }
+
+    .company-service-cell.company-name-hidden .company-name-box {
+      display: none;
+    }
+
+    .company-service-cell.company-name-hidden .company-details {
+      gap: 4px;
+      padding-left: 0;
+    }
+
     .company-details {
       display: grid;
       gap: 7px;
@@ -410,6 +424,22 @@
       flex-wrap: wrap;
       justify-content: center;
       gap: 7px 12px;
+    }
+
+    .accounting-line {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 3px;
+      color: #1f2933;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    .accounting-formula {
+      color: #344054;
+      font-size: 15px;
     }
 
     .amount-breakdown {
@@ -499,6 +529,10 @@
       width: 54px;
     }
 
+    .period-count-text {
+      white-space: nowrap;
+    }
+
     .inline-text {
       min-height: 28px;
       border: 1px solid #cfd6df;
@@ -566,6 +600,10 @@
 
     body.pdf-hide-remarks .info-card.full {
       display: none !important;
+    }
+
+    body.compact-registration-title h1 {
+      font-size: 28px;
     }
 
     .pdf-capture-page {
@@ -678,9 +716,9 @@
     .note-red {
       color: #b42318;
       background: #fff4f2;
-      font-size: 17px;
-      font-weight: 900;
-      text-align: center;
+      font-size: 14px;
+      font-weight: 500;
+      text-align: left;
     }
 
     .note-row td {
@@ -709,17 +747,29 @@
     }
 
     .summary-main {
-      display: grid;
-      gap: 5px;
-      margin-bottom: 6px;
+      display: block;
+      margin-bottom: 4px;
       color: #1f2933;
-      font-size: 16px;
-      line-height: 1.45;
+      font-size: 14px;
+      line-height: 1.38;
+      text-align: left;
     }
 
     .summary-main strong {
       color: #111111;
-      font-size: 18px;
+      font-size: 1em;
+      font-weight: 700;
+    }
+
+    .summary-main + .editable {
+      display: block;
+      padding-top: 4px;
+      border-top: 1px solid rgba(180, 35, 24, 0.18);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 1.34;
+      text-align: left;
+      white-space: pre-line;
     }
 
     .table-actions {
@@ -738,6 +788,7 @@
     .bottom-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      align-items: stretch;
       gap: 14px;
       margin-top: 8px;
     }
@@ -747,6 +798,7 @@
       border-radius: 8px;
       padding: 14px 16px;
       background: #fbfcfb;
+      height: 100%;
     }
 
     .info-card.full {
@@ -859,6 +911,7 @@
       .amount-input {
         appearance: none;
         -webkit-appearance: none;
+        caret-color: transparent;
         border: 0 !important;
         border-radius: 0 !important;
         box-shadow: none !important;
@@ -952,6 +1005,15 @@
         gap: 2px 8px;
       }
 
+      .accounting-line {
+        font-size: 12.8px;
+        line-height: 1.25;
+      }
+
+      .accounting-formula {
+        font-size: 12px;
+      }
+
       .amount-breakdown {
         gap: 3px;
       }
@@ -1006,8 +1068,25 @@
         font-size: 13px;
       }
 
+      .summary-main {
+        margin-bottom: 3px;
+        font-size: 12.5px;
+        line-height: 1.32;
+      }
+
+      .summary-main strong {
+        font-size: 1em;
+      }
+
+      .summary-main + .editable {
+        padding-top: 3px;
+        font-size: 12.5px;
+        line-height: 1.28;
+      }
+
       .bottom-grid {
         grid-template-columns: 1fr 1fr;
+        align-items: stretch;
         gap: 8px;
         margin-top: 7px;
       }
@@ -1040,6 +1119,58 @@
         break-before: page;
         page-break-before: always;
         margin-top: 0;
+      }
+
+      body.remarks-page-split .note-red {
+        padding: 7px 10px;
+        line-height: 1.28;
+      }
+
+      body.remarks-page-split .summary-main {
+        gap: 4px;
+        margin-bottom: 5px;
+        font-size: 13px;
+        line-height: 1.34;
+      }
+
+      body.remarks-page-split .summary-main strong {
+        font-size: 14px;
+      }
+
+      body.remarks-page-split .summary-main + .editable {
+        padding-top: 5px;
+        line-height: 1.32;
+      }
+
+      body.remarks-page-split .bottom-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+
+      body.remarks-page-split .info-card:not(.full) {
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 6px 9px;
+      }
+
+      body.remarks-page-split .info-card.full {
+        flex: 0 0 100%;
+        box-sizing: border-box;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      body.remarks-page-split .info-card:not(.full) .info-title {
+        margin-bottom: 3px;
+        padding-bottom: 3px;
+      }
+
+      body.remarks-page-split .info-card:not(.full) .info-lines {
+        gap: 2px;
+        font-size: 11.4px;
+        line-height: 1.22;
       }
 
       .info-card.full .info-title {
@@ -1157,8 +1288,8 @@
           <option value="mail">營業登記（代收信件）</option>
         </select>
         <button type="button" data-service="smallMove" aria-pressed="false">小規模營+遷址</button>
-        <button type="button" data-service="registrationAccountingSole" aria-pressed="false">營登+行號+會計帳</button>
-        <button type="button" data-service="registrationAccountingCompany" aria-pressed="false">營登+公司+會計帳</button>
+        <button type="button" data-service="registrationAccountingSole" aria-pressed="false">營登+行號+記帳服務</button>
+        <button type="button" data-service="registrationAccountingCompany" aria-pressed="false">營登+公司+記帳服務</button>
         <button type="button" data-service="office" aria-pressed="false">辦公室</button>
         <button type="button" data-service="hotdesk" aria-pressed="false">共享辦公室</button>
         <button type="button" data-service="meetingRoom" aria-pressed="false">會議室</button>
@@ -1284,8 +1415,9 @@
         rows: [
           {
             type: "registrationContract",
-            companyName: "公司行號（請填）",
+            companyName: "",
             serviceName: "(台中)營業登記",
+            originalPrice: 3000,
             unitPrice: 1800,
             contractMonths: 12,
             months: 6,
@@ -1311,33 +1443,21 @@
       smallMove: {
         sections: [
           {
-            title: "營業登記二年合約（依合約內指定付款時間點）",
+            title: "營業登記合約（依合約內指定付款時間點）",
             deleteAsGroup: true,
+            summary: "registration",
+            totalLabel: "本期請款總計",
             rows: [
               {
-                type: "monthly",
+                type: "registrationContract",
+                companyName: "",
                 serviceName: "(台中)營業登記",
-                originalPrice: 1800,
-                unitPrice: 1800,
-                months: 6,
-                note: "小規模營業人 / 二年約半年繳"
-              },
-              { type: "linkedAmount", text: "押金", amount: 6000 }
-            ]
-          },
-          {
-            title: "營業登記一年合約（依合約內指定付款時間點）",
-            deleteAsGroup: true,
-            rows: [
-              {
-                type: "monthly",
-                serviceName: "(台中)營業登記",
-                originalPrice: 2000,
+                originalPrice: 3000,
                 unitPrice: 2000,
+                contractMonths: 12,
                 months: 12,
-                note: "小規模營業人 / 年繳"
-              },
-              { type: "linkedAmount", text: "押金", amount: 6000 }
+                deposit: 6000
+              }
             ]
           },
           {
@@ -1352,13 +1472,13 @@
         note: ""
       },
       registrationAccountingSole: {
-        title: "營登＋代辦行號＋會計帳",
+        title: "營登＋代辦行號＋記帳服務",
         rows: [
           {
-            type: "packageModule",
-            moduleName: "營業登記",
-            serviceName: "(台中)營業登記一年合約",
-            detail: "小規模營業人 / 半年繳",
+            type: "registrationContract",
+            companyName: "",
+            serviceName: "(台中)營業登記",
+            originalPrice: 3000,
             unitPrice: 2000,
             contractMonths: 12,
             months: 6,
@@ -1372,22 +1492,23 @@
           },
           {
             type: "accountingMonthly",
-            moduleName: "會計帳",
-            text: "會計帳服務",
+            moduleName: "記帳服務",
+            text: "會計記帳服務",
             months: 14,
             unitPrice: 2000
           }
         ],
-        note: ""
+        note: "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)",
+        summary: "registration"
       },
       registrationAccountingCompany: {
-        title: "營登＋會計帳＋代辦公司",
+        title: "營登＋公司＋記帳服務",
         rows: [
           {
-            type: "packageModule",
-            moduleName: "營業登記",
-            serviceName: "(台中)營業登記二年合約",
-            detail: "小規模營業人 / 半年繳",
+            type: "registrationContract",
+            companyName: "",
+            serviceName: "(台中)營業登記",
+            originalPrice: 3000,
             unitPrice: 1690,
             contractMonths: 24,
             months: 6,
@@ -1395,8 +1516,8 @@
           },
           {
             type: "accountingMonthly",
-            moduleName: "會計帳",
-            text: "會計帳服務",
+            moduleName: "記帳服務",
+            text: "會計記帳服務",
             months: 14,
             unitPrice: 2000
           },
@@ -1407,7 +1528,8 @@
             amount: 14500
           }
         ],
-        note: ""
+        note: "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)",
+        summary: "registration"
       },
       office: {
         title: "辦公室一年合約",
@@ -1504,10 +1626,32 @@
       return names[value] || formatNumber(value);
     };
 
-    const futurePeriodLabel = (periodCount) => {
-      if (periodCount <= 0) return "後續期數";
-      if (periodCount === 1) return "第二期請款";
-      return `第二至第${periodName(periodCount + 1)}期每期`;
+    const periodRangeLabel = (periodCount) => {
+      if (periodCount <= 0) return "";
+      if (periodCount === 1) return "第2期";
+      return `第2至第${formatNumber(periodCount + 1)}期`;
+    };
+
+    const followUpRowLabel = (periodCount) => {
+      if (periodCount <= 0) return "已無後續請款";
+      const range = periodRangeLabel(periodCount);
+      return periodCount === 1
+        ? `後續請款金額（${range}）`
+        : `後續每期請款金額（${range}）`;
+    };
+
+    const followUpSummaryLine = (periodCount, cycleMonths, amount) => {
+      if (periodCount <= 0) return "";
+      const range = periodRangeLabel(periodCount);
+      const cycleText = `${formatNumber(cycleMonths)}個月為一期`;
+      return periodCount === 1
+        ? `後續${range}（${cycleText}），請款金額 <strong>${formatNumber(amount)} 元</strong>`
+        : `後續${range}（${cycleText}），每期 <strong>${formatNumber(amount)} 元</strong>`;
+    };
+
+    const buildPaymentSummary = (firstAmount, futureLine = "") => {
+      const firstLine = `說明：第一期 <strong>${formatNumber(firstAmount)} 元</strong>`;
+      return futureLine ? `${firstLine}；${futureLine}` : firstLine;
     };
 
     const paymentCycleLabel = (months) => {
@@ -1518,6 +1662,13 @@
       if (months === 24) return "2Y";
       if (months === 36) return "3Y";
       return `${formatNumber(months)}M`;
+    };
+
+    const updatePeriodCount = (row, contractMonths, currentMonths) => {
+      const target = row.querySelector("[data-period-count]");
+      if (!target) return;
+      const periods = currentMonths ? Math.ceil(Math.max(contractMonths || currentMonths, currentMonths) / currentMonths) : 0;
+      target.textContent = formatNumber(periods);
     };
 
     const createRow = (row) => {
@@ -1556,17 +1707,21 @@
             <button class="delete-row" type="button" data-delete-row aria-label="刪除此列" title="刪除此列">×</button>
             <div class="editable" contenteditable="true" data-field="serviceName"></div>
             <div>
+              合約
+              <input class="inline-number months" inputmode="numeric" data-role="contractMonths">
+              個月｜本期
+              <input class="inline-number months" inputmode="numeric" data-role="months">
+              個月，<span class="period-count-text">共 <span data-period-count>1</span> 期。</span>
+            </div>
+            <div>
               原價
               <input class="inline-number" inputmode="numeric" data-role="originalPrice">
-              元　優惠價
+              元/月　優惠價
               <input class="inline-number" inputmode="numeric" data-role="unitPrice">
               元/月
             </div>
             <div>
               <span class="editable" contenteditable="true" data-field="note"></span>
-              ｜
-              <input class="inline-number months" inputmode="numeric" data-role="months">
-              個月
             </div>
           </div>
         </td>
@@ -1575,6 +1730,7 @@
       tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
       tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice);
       tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
+      tr.querySelector('[data-role="contractMonths"]').value = formatNumber(row.contractMonths || row.months);
       tr.querySelector('[data-field="note"]').textContent = row.note;
       tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
       return tr;
@@ -1598,12 +1754,14 @@
               <div>
                 合約
                 <input class="inline-number months" inputmode="numeric" data-role="contractMonths">
-                個月　｜　本次
+                個月｜本期
                 <input class="inline-number months" inputmode="numeric" data-role="months">
-                個月
+                個月，<span class="period-count-text">共 <span data-period-count>1</span> 期。</span>
               </div>
               <div>
-                月費
+                原價
+                <input class="inline-number" inputmode="numeric" data-role="originalPrice">
+                元/月　優惠價
                 <input class="inline-number" inputmode="numeric" data-role="unitPrice">
                 元/月
               </div>
@@ -1629,6 +1787,10 @@
       `;
       tr.querySelector('[data-field="companyName"]').textContent = row.companyName;
       tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
+      if (!String(row.companyName || "").trim()) {
+        tr.querySelector(".company-service-cell").classList.add("company-name-hidden");
+      }
+      tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice || 3000);
       tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
       tr.querySelector('[data-role="contractMonths"]').value = formatNumber(row.contractMonths);
       tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
@@ -1648,11 +1810,10 @@
             <div class="editable module-detail" contenteditable="true" data-field="serviceName"></div>
             <div class="editable module-detail" contenteditable="true" data-field="detail"></div>
             <div class="module-fields">
-              <span>合約 <input class="inline-number months" inputmode="numeric" data-role="contractMonths"> 個月</span>
-              <span>本期 <input class="inline-number months" inputmode="numeric" data-role="months"> 個月</span>
+              <span>合約 <input class="inline-number months" inputmode="numeric" data-role="contractMonths"> 個月｜本期 <input class="inline-number months" inputmode="numeric" data-role="months"> 個月，<span class="period-count-text">共 <span data-period-count>1</span> 期。</span></span>
             </div>
             <div class="module-fields">
-              <span>月費 <input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月</span>
+              <span>原價 <input class="inline-number" inputmode="numeric" data-role="originalPrice"> 元/月　優惠價 <input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月</span>
             </div>
           </div>
         </td>
@@ -1680,6 +1841,7 @@
       tr.querySelector('[data-field="moduleName"]').textContent = row.moduleName;
       tr.querySelector('[data-field="serviceName"]').textContent = venueServiceName(row.serviceName);
       tr.querySelector('[data-field="detail"]').textContent = row.detail;
+      tr.querySelector('[data-role="originalPrice"]').value = formatNumber(row.originalPrice || 3000);
       tr.querySelector('[data-role="unitPrice"]').value = formatNumber(row.unitPrice);
       tr.querySelector('[data-role="contractMonths"]').value = formatNumber(row.contractMonths || row.months);
       tr.querySelector('[data-role="months"]').value = formatNumber(row.months);
@@ -1696,10 +1858,12 @@
           <div class="row-edit-shell module-cell">
             <button class="delete-row" type="button" data-delete-row aria-label="刪除此列" title="刪除此列">×</button>
             <div class="editable module-title" contenteditable="true" data-field="moduleName"></div>
-            <div class="editable module-detail" contenteditable="true" data-field="text"></div>
-            <div class="module-fields">
-              <span>月數 <input class="inline-number months" inputmode="numeric" data-role="months"> 個月</span>
-              <span>月費 <input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月</span>
+            <div class="accounting-line">
+              <span class="editable module-detail" contenteditable="true" data-field="text"></span>
+              <span>（一次收取 <input class="inline-number months" inputmode="numeric" data-role="months"> 個月）</span>
+            </div>
+            <div class="module-fields accounting-formula">
+              <span><input class="inline-number" inputmode="numeric" data-role="unitPrice"> 元/月 × <span data-accounting-months-copy>14</span> 個月</span>
             </div>
           </div>
         </td>
@@ -1919,8 +2083,11 @@
 
       if (row.dataset.calc === "monthly") {
         const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
+        const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]')?.value || row.querySelector('[data-role="months"]').value);
         const months = parseNumber(row.querySelector('[data-role="months"]').value);
-        output.value = formatNumber(unitPrice * months);
+        const currentMonths = Math.max(Math.min(months, contractMonths || months), 0);
+        updatePeriodCount(row, contractMonths, currentMonths);
+        output.value = formatNumber(unitPrice * currentMonths);
       }
 
       if (row.dataset.calc === "linkedAmount") {
@@ -1939,6 +2106,7 @@
         const nextTotal = unitPrice * nextMonths;
         const serviceTotalLabel = row.querySelector("[data-service-total]");
         if (serviceTotalLabel) serviceTotalLabel.textContent = formatNumber(serviceTotal);
+        updatePeriodCount(row, contractMonths, currentMonths);
         row.dataset.nextTotal = String(nextTotal);
         row.dataset.nextMonths = String(nextMonths);
         row.dataset.currentMonths = String(currentMonths);
@@ -1951,15 +2119,17 @@
         const contractMonths = parseNumber(row.querySelector('[data-role="contractMonths"]').value);
         const months = parseNumber(row.querySelector('[data-role="months"]').value);
         const deposit = parseNumber(row.querySelector('[data-role="deposit"]').value);
-        const serviceTotal = unitPrice * months;
-        const futureMonths = Math.max(contractMonths - months, 0);
-        const futurePeriods = months ? Math.ceil(futureMonths / months) : 0;
-        const futureCycleTotal = futureMonths ? unitPrice * Math.min(months, futureMonths) : 0;
+        const currentMonths = Math.max(Math.min(months, contractMonths || months), 0);
+        const serviceTotal = unitPrice * currentMonths;
+        const futureMonths = Math.max(contractMonths - currentMonths, 0);
+        const futurePeriods = currentMonths ? Math.ceil(futureMonths / currentMonths) : 0;
+        const futureCycleTotal = futureMonths ? unitPrice * Math.min(currentMonths, futureMonths) : 0;
         const serviceTotalLabel = row.querySelector("[data-service-total]");
         if (serviceTotalLabel) serviceTotalLabel.textContent = formatNumber(serviceTotal);
+        updatePeriodCount(row, contractMonths, currentMonths);
         const futureLabel = row.querySelector("[data-future-label]");
         const futureCycleTotalLabel = row.querySelector("[data-future-cycle-total]");
-        if (futureLabel) futureLabel.textContent = futurePeriodLabel(futurePeriods);
+        if (futureLabel) futureLabel.textContent = followUpRowLabel(futurePeriods);
         if (futureCycleTotalLabel) futureCycleTotalLabel.textContent = formatNumber(futureCycleTotal);
         output.value = formatNumber(serviceTotal + deposit);
       }
@@ -1967,6 +2137,8 @@
       if (row.dataset.calc === "accountingMonthly") {
         const unitPrice = parseNumber(row.querySelector('[data-role="unitPrice"]').value);
         const months = parseNumber(row.querySelector('[data-role="months"]').value);
+        const monthsCopy = row.querySelector("[data-accounting-months-copy]");
+        if (monthsCopy) monthsCopy.textContent = formatNumber(months);
         output.value = formatNumber(unitPrice * months);
       }
 
@@ -2008,13 +2180,12 @@
         if (summaryText) {
           const cycleLabel = paymentCycleLabel(billMonths);
           const futureLine = futurePeriods <= 0
-            ? `本合約期租金已包含 ${formatNumber(currentMonths)} 個月，已無後續租金請款。`
+            ? ""
             : futurePeriods === 1
-              ? `${futurePeriodLabel(futurePeriods)}金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>（${cycleLabel}）`
-              : `${futurePeriodLabel(futurePeriods)} <strong>${formatNumber(futureCycleTotal)} 元</strong>（${cycleLabel}）`;
+              ? `後續第2期（${cycleLabel}），請款金額 <strong>${formatNumber(futureCycleTotal)} 元</strong>`
+              : `後續${periodRangeLabel(futurePeriods)}（${cycleLabel}），每期 <strong>${formatNumber(futureCycleTotal)} 元</strong>`;
           summaryText.innerHTML = `
-            <div>說明：第一期請款金額 <strong>${formatNumber(rentTotal + deposit)} 元</strong>（${cycleLabel}）</div>
-            <div>${futureLine}</div>
+            <div>${buildPaymentSummary(rentTotal + deposit, futureLine)}</div>
           `;
         }
       }
@@ -2042,8 +2213,45 @@
           .reduce((sum, itemInput) => sum + parseNumber(itemInput.value), 0);
         input.value = formatNumber(sectionTotal);
       });
+      quoteBody.querySelectorAll("input[data-section-future-total]").forEach((input) => {
+        const sectionId = input.closest("tr").dataset.sectionFutureTotal;
+        const sectionRows = [...quoteBody.querySelectorAll(`.linked-row[data-section="${sectionId}"][data-calc='registrationContract']`)];
+        const rowInfos = sectionRows.map((row) => {
+          const currentMonths = Math.max(parseNumber(row.dataset.currentMonths), 0);
+          const nextMonths = Math.max(parseNumber(row.dataset.nextMonths), 0);
+          const unitPrice = Math.max(parseNumber(row.dataset.unitPrice), 0);
+          return { currentMonths, nextMonths, unitPrice };
+        });
+        const futurePeriods = rowInfos.length
+          ? Math.max(...rowInfos.map((info) => info.currentMonths ? Math.ceil(info.nextMonths / info.currentMonths) : 0))
+          : 0;
+        const futureCycleTotal = rowInfos.reduce((sum, info) => {
+          return sum + info.unitPrice * Math.min(info.currentMonths, info.nextMonths);
+        }, 0);
+        const cycleMonths = rowInfos.find((info) => info.currentMonths > 0)?.currentMonths || 0;
+        const label = input.closest("tr").querySelector("[data-section-future-label]");
+        const summaryRow = input.closest("tr").nextElementSibling;
+        const summaryText = summaryRow?.querySelector("[data-section-summary-text]");
+        const summaryNote = summaryRow?.querySelector(".editable");
+        input.value = formatNumber(futureCycleTotal);
+        input.setAttribute("value", formatNumber(futureCycleTotal));
+        if (label) label.textContent = followUpRowLabel(futurePeriods);
+        input.closest("tr").hidden = futurePeriods <= 0;
+        if (summaryRow) summaryRow.hidden = false;
+        if (summaryText) {
+          const futureLine = followUpSummaryLine(futurePeriods, cycleMonths, futureCycleTotal);
+          const sectionTotalInput = quoteBody.querySelector(`[data-section-total="${sectionId}"] input[data-section-total]`);
+          const sectionTotal = sectionTotalInput ? parseNumber(sectionTotalInput.value) : 0;
+          summaryText.innerHTML = `
+            <div>${buildPaymentSummary(sectionTotal, futureLine)}</div>
+          `;
+        }
+        if (summaryNote) {
+          summaryNote.textContent = "押金第一期收取，後續期數不再收押金。";
+        }
+      });
       const total = [...quoteBody.querySelectorAll(".amount-input:not([data-total]):not([data-next-total])")]
-        .filter((input) => !input.hasAttribute("data-section-total"))
+        .filter((input) => !input.hasAttribute("data-section-total") && !input.hasAttribute("data-section-future-total"))
         .reduce((sum, input) => sum + parseNumber(input.value), 0);
       const registrationRows = [...quoteBody.querySelectorAll(".linked-row[data-calc='registrationContract']")];
       const registrationInfos = registrationRows.map((row) => {
@@ -2059,12 +2267,6 @@
         return sum + info.unitPrice * Math.min(info.currentMonths, info.nextMonths);
       }, 0);
       const cycleMonths = registrationInfos.find((info) => info.currentMonths > 0)?.currentMonths || 0;
-      const cycleLabel = paymentCycleLabel(cycleMonths);
-      const futureTitle = futurePeriods <= 0
-        ? "已無後續請款"
-        : futurePeriods === 1
-          ? "第二期請款金額"
-          : `第二至第${periodName(futurePeriods + 1)}期每期請款金額`;
       const totalInput = quoteBody.querySelector("[data-total]");
       if (totalInput) totalInput.value = formatNumber(total);
       const nextTotalInput = quoteBody.querySelector("input[data-next-total]");
@@ -2077,28 +2279,19 @@
         nextTotalInput.setAttribute("value", formatNumber(futureCycleTotal));
       }
       if (futureRowLabel) {
-        futureRowLabel.textContent = futurePeriods > 0
-          ? `${futureTitle}（${cycleLabel}）`
-          : "已無後續請款";
+        futureRowLabel.textContent = followUpRowLabel(futurePeriods);
       }
       if (futureRow) {
         futureRow.hidden = futurePeriods <= 0;
       }
       if (summaryText) {
-        const futureLine = futurePeriods <= 0
-          ? ""
-          : futurePeriods === 1
-            ? `<div>${futureTitle} <strong>${formatNumber(futureCycleTotal)} 元</strong></div>`
-            : `<div>${futureTitle}：<strong>${formatNumber(futureCycleTotal)} 元</strong></div>`;
+        const futureLine = followUpSummaryLine(futurePeriods, cycleMonths, futureCycleTotal);
         summaryText.innerHTML = `
-          <div>說明：第一期請款金額 <strong>${formatNumber(total)} 元</strong></div>
-          ${futureLine}
+          <div>${buildPaymentSummary(total, futureLine)}</div>
         `;
       }
       if (registrationNote) {
-        registrationNote.textContent = futurePeriods > 0
-          ? "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)"
-          : "押金第一期收取。\n2. 會議室不另收費(採預制 每月80H內可使用)";
+        registrationNote.textContent = "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)";
       }
     };
 
@@ -2168,6 +2361,8 @@
 
     const renderService = (serviceKey) => {
       currentService = serviceKey;
+      document.body.dataset.service = serviceKey;
+      document.body.classList.toggle("compact-registration-title", serviceKey === "registration");
       const template = templates[serviceKey];
       quoteBody.innerHTML = "";
       if (addNoteButton) addNoteButton.hidden = !template.allowNotes;
@@ -2205,6 +2400,27 @@
             sectionTotalRow.querySelector(".editable").textContent = section.totalLabel || "合計";
             quoteBody.appendChild(sectionTotalRow);
           }
+
+          if (section.summary === "registration") {
+            const futureRow = document.createElement("tr");
+            futureRow.className = "future-row";
+            futureRow.dataset.sectionFutureTotal = sectionId;
+            futureRow.innerHTML = `
+              <td><div class="editable" contenteditable="true" data-section-future-label>後續請款金額</div></td>
+              <td><input class="amount-input" data-section-future-total readonly value="0"></td>
+            `;
+            quoteBody.appendChild(futureRow);
+
+            const summaryRow = document.createElement("tr");
+            summaryRow.className = "note-row";
+            summaryRow.innerHTML = `
+              <td class="note-red" colspan="2">
+                <div class="summary-main" data-section-summary-text></div>
+                <div class="editable" contenteditable="true"></div>
+              </td>
+            `;
+            quoteBody.appendChild(summaryRow);
+          }
         });
 
         if (template.note) {
@@ -2237,7 +2453,7 @@
       const isRegistrationSummary = template.summary === "registration";
       totalRow.className = "total-row";
       totalRow.innerHTML = `
-        <td class="label-red"><div class="editable" contenteditable="true">${isRegistrationSummary ? "本期" : "合計"}</div></td>
+        <td class="label-red"><div class="editable" contenteditable="true">${isRegistrationSummary ? "本期請款總計" : "合計"}</div></td>
         <td><input class="amount-input" data-total readonly value="0"></td>
       `;
       quoteBody.appendChild(totalRow);
@@ -2415,8 +2631,13 @@
       }
     };
 
-    pdfButton.addEventListener("click", () => window.print());
-    printButton.addEventListener("click", () => window.print());
+    const printQuote = () => {
+      document.activeElement?.blur?.();
+      window.print();
+    };
+
+    pdfButton.addEventListener("click", printQuote);
+    printButton.addEventListener("click", printQuote);
     registrationModeSelect.addEventListener("change", () => {
       if (registrationModeSelect.value === "two") {
         window.location.href = `quote-two-companies.html?venue=${encodeURIComponent(currentVenue)}`;

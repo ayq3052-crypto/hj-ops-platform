@@ -354,7 +354,7 @@
       const unlockDurationMs = 5 * 60 * 60 * 1000;
       const maxFailCount = 5;
       const cooldownMs = 2 * 60 * 1000;
-      const isLocalTest = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+      const isLocalTest = window.location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const panel = document.querySelector("[data-locked]");
       const form = document.querySelector("#loginForm");
       const accountInput = document.querySelector("#accountInput");
