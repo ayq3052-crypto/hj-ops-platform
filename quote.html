@@ -1934,7 +1934,7 @@
             </div>
           </div>
         </td>
-        <td><input class="amount-input" inputmode="numeric" readonly data-row-total value="0"></td>
+        <td><input class="amount-input" inputmode="numeric" data-row-total data-manual-price="false" value="0"></td>
       `;
       tr.querySelector('[data-field="moduleName"]').textContent = row.moduleName;
       tr.querySelector('[data-role="addressMoveArea"]').value = row.selected || options[0]?.value || "";
@@ -2192,7 +2192,13 @@
       if (row.dataset.calc === "addressMove") {
         const areaSelect = row.querySelector('[data-role="addressMoveArea"]');
         const selectedArea = areaSelect.options[areaSelect.selectedIndex];
-        output.value = formatNumber(parseNumber(selectedArea?.dataset.amount || 0));
+        if (row.dataset.addressMoveArea !== areaSelect.value) {
+          row.dataset.addressMoveArea = areaSelect.value;
+          output.value = formatNumber(parseNumber(selectedArea?.dataset.amount || 0));
+          output.dataset.manualPrice = "false";
+        } else if (output.dataset.manualPrice !== "true") {
+          output.value = formatNumber(parseNumber(selectedArea?.dataset.amount || 0));
+        }
       }
 
       if (row.dataset.calc === "meetingRoom") {
@@ -2353,7 +2359,10 @@
       quoteBody.querySelectorAll(".amount-input").forEach((input) => {
         if (input.dataset.boundAmount === "true") return;
         input.dataset.boundAmount = "true";
-        input.addEventListener("input", calculate);
+        input.addEventListener("input", () => {
+          if (input.hasAttribute("data-manual-price")) input.dataset.manualPrice = "true";
+          calculate();
+        });
         input.addEventListener("blur", () => {
           input.value = formatNumber(parseNumber(input.value));
           calculate();
