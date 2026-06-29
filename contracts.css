@@ -667,6 +667,37 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   height: auto;
 }
 
+.registration-contract .registration-page-one {
+  padding-top: 6.4mm;
+  font-size: 14.5px;
+  line-height: 1.02;
+}
+
+.registration-contract .registration-page-one .html-contract-logo {
+  margin-bottom: 1px;
+}
+
+.registration-contract .registration-page-one .html-contract-logo img {
+  width: 48px;
+}
+
+.registration-contract .registration-page-one h2 {
+  margin-bottom: 3px;
+  font-size: 29px;
+}
+
+.registration-contract .registration-page-one .contract-section {
+  margin-top: 4px;
+}
+
+.registration-contract .registration-page-one p {
+  margin-bottom: 0.2px;
+}
+
+.registration-contract .registration-page-one .contract-fill-inline {
+  line-height: 1;
+}
+
 .html-contract-page h2 {
   margin: 0 0 10px;
   text-align: center;
