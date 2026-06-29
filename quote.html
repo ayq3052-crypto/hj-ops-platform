@@ -1463,37 +1463,30 @@
         note: ""
       },
       smallMove: {
-        sections: [
+        title: "營業登記＋申辦公司地址遷移",
+        rows: [
           {
-            title: "營業登記合約（依合約內指定付款時間點）",
-            deleteAsGroup: true,
-            summary: "registration",
-            totalLabel: "本期請款總計",
-            rows: [
-              {
-                type: "registrationContract",
-                companyName: "",
-                serviceName: "(台中)營業登記",
-                originalPrice: 3000,
-                unitPrice: 2000,
-                contractMonths: 12,
-                months: 12,
-                deposit: 6000
-              }
-            ]
+            type: "registrationContract",
+            companyName: "",
+            serviceName: "(台中)營業登記",
+            originalPrice: 3000,
+            unitPrice: 2000,
+            contractMonths: 12,
+            months: 12,
+            deposit: 6000
           },
           {
-            title: "申辦公司地址遷移",
-            compactRows: true,
-            grandTotal: true,
-            rows: [
-              { text: "台中縣市", amount: 6000 },
-              { text: "外縣市", amount: 8000 }
-            ],
-            totalLabel: "總計"
+            type: "addressMove",
+            moduleName: "申辦公司地址遷移",
+            selected: "taichung",
+            options: [
+              { value: "taichung", label: "台中市", amount: 6000 },
+              { value: "outside", label: "外縣市", amount: 8000 }
+            ]
           }
         ],
-        note: ""
+        note: "押金第一期收取，後續期數不再收押金。\n2. 會議室不另收費(採預制 每月80H內可使用)",
+        summary: "registration"
       },
       registrationAccountingSole: {
         title: "營登＋代辦行號＋記帳服務",
@@ -1702,6 +1695,7 @@
       if (row.type === "packageModule") return createPackageModuleRow(row);
       if (row.type === "moduleAmount") return createModuleAmountRow(row);
       if (row.type === "accountingMonthly") return createAccountingMonthlyRow(row);
+      if (row.type === "addressMove") return createAddressMoveRow(row);
       if (row.type === "meetingRoom") return createMeetingRoomRow(row);
       if (row.type === "officeContract") return createOfficeContractRow(row);
       if (row.type === "mailContract") return createMailContractRow(row);
@@ -1915,6 +1909,35 @@
       `;
       tr.querySelector('[data-field="moduleName"]').textContent = row.moduleName;
       tr.querySelector(".module-detail").textContent = venueServiceName(row.text);
+      return tr;
+    };
+
+    const createAddressMoveRow = (row) => {
+      const options = row.options || [
+        { value: "taichung", label: "台中市", amount: 6000 },
+        { value: "outside", label: "外縣市", amount: 8000 }
+      ];
+      const tr = document.createElement("tr");
+      tr.className = "item-row linked-row";
+      tr.dataset.calc = "addressMove";
+      tr.innerHTML = `
+        <td>
+          <div class="row-edit-shell module-cell">
+            <button class="delete-row" type="button" data-delete-row aria-label="刪除此列" title="刪除此列">×</button>
+            <div class="editable module-title" contenteditable="true" data-field="moduleName"></div>
+            <div class="module-fields">
+              <span>
+                <select class="inline-select" data-role="addressMoveArea">
+                  ${options.map((option) => `<option value="${option.value}" data-amount="${option.amount}">${option.label}</option>`).join("")}
+                </select>
+              </span>
+            </div>
+          </div>
+        </td>
+        <td><input class="amount-input" inputmode="numeric" readonly data-row-total value="0"></td>
+      `;
+      tr.querySelector('[data-field="moduleName"]').textContent = row.moduleName;
+      tr.querySelector('[data-role="addressMoveArea"]').value = row.selected || options[0]?.value || "";
       return tr;
     };
 
@@ -2164,6 +2187,12 @@
         const monthsCopy = row.querySelector("[data-accounting-months-copy]");
         if (monthsCopy) monthsCopy.textContent = formatNumber(months);
         output.value = formatNumber(unitPrice * months);
+      }
+
+      if (row.dataset.calc === "addressMove") {
+        const areaSelect = row.querySelector('[data-role="addressMoveArea"]');
+        const selectedArea = areaSelect.options[areaSelect.selectedIndex];
+        output.value = formatNumber(parseNumber(selectedArea?.dataset.amount || 0));
       }
 
       if (row.dataset.calc === "meetingRoom") {
