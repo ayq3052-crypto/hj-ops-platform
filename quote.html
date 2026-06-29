@@ -1475,9 +1475,11 @@
     const pdfButton = document.querySelector("#pdfButton");
     const printButton = document.querySelector("#printButton");
     const registrationModeSelect = document.querySelector("#registrationModeSelect");
-    const requestedVenue = new URLSearchParams(window.location.search).get("venue");
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedVenue = urlParams.get("venue");
+    const requestedService = urlParams.get("service");
     let currentVenue = venues[requestedVenue] ? requestedVenue : "taichung";
-    let currentService = "registration";
+    let currentService = requestedService === "mail" ? "mailCollection" : "registration";
 
     const venueServiceName = (value) => {
       return String(value).replace(/\((台中|環瑞)\)/g, `(${venues[currentVenue].servicePrefix})`);

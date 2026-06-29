@@ -961,6 +961,7 @@
         <select class="service-select active" id="registrationModeSelect" aria-label="營業登記">
           <option value="single">營業登記（單家公司）</option>
           <option value="two" selected>營業登記（兩家公司）</option>
+          <option value="mail">營業登記（代收信件）</option>
         </select>
       </nav>
     </div>
@@ -1571,6 +1572,9 @@
     registrationModeSelect.addEventListener("change", () => {
       if (registrationModeSelect.value === "single") {
         window.location.href = `quote.html?venue=${encodeURIComponent(currentVenue)}`;
+      }
+      if (registrationModeSelect.value === "mail") {
+        window.location.href = `quote.html?venue=${encodeURIComponent(currentVenue)}&service=mail`;
       }
     });
 

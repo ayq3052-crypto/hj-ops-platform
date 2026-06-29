@@ -354,6 +354,7 @@
       const unlockDurationMs = 5 * 60 * 60 * 1000;
       const maxFailCount = 5;
       const cooldownMs = 2 * 60 * 1000;
+      const isLocalTest = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const panel = document.querySelector("[data-locked]");
       const form = document.querySelector("#loginForm");
       const accountInput = document.querySelector("#accountInput");
@@ -399,7 +400,7 @@
       };
 
       const unlockedUntil = () => Number(localStorage.getItem(unlockKey) || 0);
-      const hasValidUnlock = () => savedAuth() && unlockedUntil() > Date.now();
+      const hasValidUnlock = () => isLocalTest || (savedAuth() && unlockedUntil() > Date.now());
       const failedState = () => {
         try {
           return JSON.parse(localStorage.getItem(failKey) || "null") || { count: 0, cooldownUntil: 0 };
@@ -464,6 +465,15 @@
       const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
 
       const syncMode = () => {
+        if (isLocalTest) {
+          setLocked(false);
+          lockButton.hidden = true;
+          resetButton.hidden = true;
+          setNote("本機測試模式，入口直接開放。");
+          const target = nextUrl();
+          if (target) window.location.assign(target);
+          return;
+        }
         const auth = savedAuth();
         loginButton.textContent = auth ? "登入" : "設定帳號密碼";
         resetButton.hidden = !auth;
