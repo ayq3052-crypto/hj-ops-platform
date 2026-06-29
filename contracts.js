@@ -402,6 +402,31 @@ function parseRocDate(value) {
   };
 }
 
+function parseCompleteRocDate(value) {
+  const text = String(value || "").trim();
+  const buildDate = (year, month, day) => {
+    const date = {
+      year,
+      month: month.padStart(2, "0"),
+      day: day.padStart(2, "0"),
+    };
+    const monthNumber = Number(date.month);
+    const dayNumber = Number(date.day);
+    if (monthNumber < 1 || monthNumber > 12 || dayNumber < 1 || dayNumber > 31) return null;
+    return date;
+  };
+  const compact = text.match(/^\d{6,7}$/);
+  if (compact && text.length === 7) {
+    return buildDate(text.slice(0, 3), text.slice(3, 5), text.slice(5, 7));
+  }
+  if (compact && text.length === 6) {
+    return buildDate(text.slice(0, 2), text.slice(2, 4), text.slice(4, 6));
+  }
+  const parts = text.match(/(\d{2,3})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (!parts) return null;
+  return buildDate(parts[1], parts[2], parts[3]);
+}
+
 function formatRocDate(value) {
   const date = parseRocDate(value);
   if (!date) return "待確認";
@@ -415,6 +440,10 @@ function formatRocDateOrEmpty(value) {
 
 function formatRocDateParts(date) {
   return `${date.year}年${date.month}月${date.day}日`;
+}
+
+function isCompleteRocDateValue(value) {
+  return Boolean(parseCompleteRocDate(value));
 }
 
 function contractDurationMonthsFromValues(startValue, endValue) {
@@ -694,7 +723,7 @@ function normalizedContractInputValue(fieldKey, value) {
     return number ? String(number) : value;
   }
   if (["startDate", "endDate", "signedDate"].includes(fieldKey)) {
-    const date = parseRocDate(value);
+    const date = parseCompleteRocDate(value);
     return date ? formatRocDateParts(date) : value;
   }
   return value;
@@ -1668,14 +1697,16 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeContractPreviewModal();
 });
 
-contractSummary.addEventListener("input", (event) => {
-  const input = event.target.closest("[data-contract-field]");
+const contractDateFields = new Set(["startDate", "endDate", "signedDate"]);
+
+function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
   const row = currentContractRow();
   if (!input || !row) return;
   if (input.tagName === "TEXTAREA") resizeContractTextareas(contractSummary);
   const key = contractDraftKey(row);
   contractDrafts[key] = contractDrafts[key] || {};
   const changedField = input.dataset.contractField;
+  const isDateField = contractDateFields.has(changedField);
   const syncPreviewField = (fieldKey, value) => {
     contractSummary.querySelectorAll(`[data-fill-key="${CSS.escape(fieldKey)}"]`).forEach((node) => {
       node.textContent = value.trim() || "待填";
@@ -1696,31 +1727,51 @@ contractSummary.addEventListener("input", (event) => {
     syncPreviewField(fieldKey, value);
   };
 
-  const normalizedValue = normalizedContractInputValue(changedField, input.value);
+  const normalizedValue = isDateField && !finalizeDate
+    ? input.value
+    : normalizedContractInputValue(changedField, input.value);
   setDraftField(changedField, normalizedValue);
+  if (isDateField && !finalizeDate) {
+    saveContractDrafts();
+    return;
+  }
 
   if (changedField === "startDate") {
-    const start = parseRocDate(normalizedValue);
+    const start = parseCompleteRocDate(normalizedValue);
     if (start) setDraftField("dueDay", start.day);
   }
 
   if (["startDate", "contractYears"].includes(changedField)) {
-    const autoEndDate = calculatedEndDateFromDraft(row, contractDrafts[key]);
+    const draft = contractDrafts[key];
+    const base = contractBaseFields(row);
+    const startValue = draft.startDate ?? base.startDate;
+    const autoEndDate = isCompleteRocDateValue(startValue) ? calculatedEndDateFromDraft(row, draft) : "";
     if (autoEndDate) setDraftField("endDate", autoEndDate);
   }
 
   if (changedField === "endDate") {
-    const derivedYears = contractYearsFromValues(contractDrafts[key].startDate ?? contractBaseFields(row).startDate, normalizedValue);
+    const draft = contractDrafts[key];
+    const base = contractBaseFields(row);
+    const startValue = draft.startDate ?? base.startDate;
+    const derivedYears = isCompleteRocDateValue(startValue) && isCompleteRocDateValue(normalizedValue)
+      ? contractYearsFromValues(startValue, normalizedValue)
+      : "";
     if (derivedYears) {
       setDraftField("contractYears", derivedYears);
-    } else if (numberFromText(contractDrafts[key].contractYears ?? contractBaseFields(row).contractYears)) {
-      const autoEndDate = calculatedEndDateFromDraft(row, contractDrafts[key]);
+    } else if (numberFromText(draft.contractYears ?? base.contractYears) && isCompleteRocDateValue(startValue)) {
+      const autoEndDate = calculatedEndDateFromDraft(row, draft);
       if (autoEndDate) setDraftField("endDate", autoEndDate);
     }
   }
 
   if (["startDate", "endDate", "contractYears", "periodMonths"].includes(changedField)) {
-    const autoTermCount = calculatedTermCountFromDraft(row, contractDrafts[key]);
+    const draft = contractDrafts[key];
+    const base = contractBaseFields(row);
+    const startValue = draft.startDate ?? base.startDate;
+    const endValue = draft.endDate ?? base.endDate;
+    const autoTermCount = isCompleteRocDateValue(startValue) && isCompleteRocDateValue(endValue)
+      ? calculatedTermCountFromDraft(row, draft)
+      : "";
     if (autoTermCount) setDraftField("termCount", autoTermCount);
   }
 
@@ -1730,7 +1781,19 @@ contractSummary.addEventListener("input", (event) => {
   }
 
   saveContractDrafts();
+}
+
+contractSummary.addEventListener("input", (event) => {
+  const input = event.target.closest("[data-contract-field]");
+  if (!input) return;
+  handleContractFieldEdit(input);
 });
+
+contractSummary.addEventListener("blur", (event) => {
+  const input = event.target.closest("[data-contract-field]");
+  if (!input || !contractDateFields.has(input.dataset.contractField)) return;
+  handleContractFieldEdit(input, { finalizeDate: true });
+}, true);
 
 window.addEventListener("afterprint", cleanupPrintRoot);
 
