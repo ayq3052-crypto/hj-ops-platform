@@ -734,6 +734,10 @@ function paymentMoneyText(value) {
   return amount ? formatCurrency(amount) : escapeHtml(value);
 }
 
+function inlineMoneyText(value) {
+  return escapeHtml(paymentMoneyText(value));
+}
+
 function contractPaymentTotalValue(values) {
   const explicitTotal = plainMoney(values.paymentTotal);
   if (explicitTotal) return explicitTotal;
@@ -1028,15 +1032,17 @@ function openContractPreviewModal() {
 function renderRegistrationContractDraft(values) {
   const monthly = plainMoney(values.monthly);
   const deposit = plainMoney(values.deposit);
+  const monthlyText = inlineMoneyText(monthly);
+  const depositText = inlineMoneyText(deposit);
   const total = contractPaymentTotalValue(values);
   const totalText = paymentMoneyText(total);
   const isRenewal = normalizeOfficeContractMode(values.officeContractMode) === "renewal";
   const depositLine = isRenewal
-    ? `<p class="indent-1">三、乙方前已交付履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元，於本續約期間續作為本契約義務之擔保，本次續約無須另行給付履約保證金。</p>`
-    : `<p class="indent-1">三、履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元，租賃期滿並遷出營業登記後無息返還</p>`;
+    ? `<p class="indent-1">三、乙方前已交付履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元，於本續約期間續作為本契約義務之擔保，本次續約無須另行給付履約保證金。</p>`
+    : `<p class="indent-1">三、履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元，租賃期滿並遷出營業登記後無息返還</p>`;
   const depositArticle = isRenewal
-    ? `<p>乙方前已交付履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元整，於本續約期間續作為乙方履行本契約義務之擔保，乙方本次續約無須另行給付履約保證金。</p>`
-    : `<p>乙方應於本租約履行時同時給付甲方新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元整之保證金，以作為其履行本契約義務之擔保。</p>`;
+    ? `<p>乙方前已交付履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元整，於本續約期間續作為乙方履行本契約義務之擔保，乙方本次續約無須另行給付履約保證金。</p>`
+    : `<p>乙方應於本租約履行時同時給付甲方新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元整之保證金，以作為其履行本契約義務之擔保。</p>`;
   const depositContinuation = isRenewal
     ? `<p>租賃終止或屆滿並完成營業登記遷出、費用結清後，由甲方無息返還。乙方不得主張以履約保證金抵充租金之用。</p>`
     : `<p>金於乙方在租約終止或屆滿前遷移5日內向主管機關辦理將其登記地址遷離甲方標的或解散（所有以該地址營業登記均遷移，且不含歇業）後交還房屋並扣除其所積欠之租金等費用及債務後，由甲方無息返還之。就押租金乙方不得主張抵充租金之用。</p>`;
@@ -1057,7 +1063,7 @@ function renderRegistrationContractDraft(values) {
         <p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>
 
         <p class="contract-section">第三條：租金：</p>
-        <p class="indent-1">一、定價每月 3000 元，折扣後每月租金新台幣<span class="contract-fill-inline fill-money" data-preview-key="monthly">${escapeHtml(monthly)}</span>元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
+        <p class="indent-1">一、定價每月 <span class="contract-static-money">3,000</span> 元，折扣後每月租金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
         <p class="indent-1">二、租金於每期 <span class="contract-token-inline" data-preview-key="dueDay">${escapeHtml(values.dueDay)}</span> 前繳納</p>
         ${depositLine}
 
@@ -1080,9 +1086,9 @@ function renderRegistrationContractDraft(values) {
         <p class="indent-1">二、乙方以甲方地址申請公司執照者，於合約終止時，需將公司登記遷出，甲方並依稅務等單位要求每月呈報遷出名單公文，否則甲方得將通報乙方營業登記遷出。</p>
         <p class="indent-1">三、甲乙雙方僅有契約履行之責，乙方如與其他人有債務糾紛與法律責任，由乙方自行負責與甲方無關。</p>
         <p class="indent-1">四、乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。但若營業登記事項因甲方因素未能核准則雙方無條件解約退回押金及已繳納租金，並且不得收受任何違約金。</p>
-        <p class="indent-1">五、本契約租賃期限未滿，乙方擬解約時，以一個月租金（以原價3000元計，且當月份已付租金除外）作為違約金。</p>
+        <p class="indent-1">五、本契約租賃期限未滿，乙方擬解約時，以一個月租金（以原價 <span class="contract-static-money">3,000</span> 元計，且當月份已付租金除外）作為違約金。</p>
         <p class="indent-1">六、租金應於約定日前繳納，不得任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。</p>
-        <p class="indent-1">七、甲方為使租賃標的物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案，若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價3000元/月計算</p>
+        <p class="indent-1">七、甲方為使租賃標的物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案，若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價 <span class="contract-static-money">3,000</span> 元/月計算</p>
 
         <footer>第1頁（共2頁）</footer>
       </article>
@@ -1140,15 +1146,16 @@ function hasDepositAmount(values) {
 
 function renderWorkplaceDepositLine(values, type) {
   const deposit = plainMoney(values.deposit);
+  const depositText = inlineMoneyText(deposit);
   const officeMode = normalizeOfficeContractMode(values.officeContractMode);
   if (type === "office" && officeMode === "renewal") {
     if (deposit) {
-      return `<p class="indent-1">三、乙方前已交付履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元，於本續約期間續作為本契約義務之擔保，本次續約無須另行給付履約保證金。</p>`;
+      return `<p class="indent-1">三、乙方前已交付履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元，於本續約期間續作為本契約義務之擔保，本次續約無須另行給付履約保證金。</p>`;
     }
     return `<p class="indent-1">三、乙方前已交付之履約保證金，於本續約期間續作為本契約義務之擔保，本次續約無須另行給付履約保證金。</p>`;
   }
   if (hasDepositAmount(values)) {
-    return `<p class="indent-1">三、履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元，租賃期滿並完成點交後無息返還。</p>`;
+    return `<p class="indent-1">三、履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元，租賃期滿並完成點交後無息返還。</p>`;
   }
   if (type === "seat") return `<p class="indent-1">三、本共享座位服務免收押金。</p>`;
   return `<p class="indent-1">三、履約保證金依雙方約定辦理，未收押金者免填。</p>`;
@@ -1156,12 +1163,13 @@ function renderWorkplaceDepositLine(values, type) {
 
 function renderWorkplaceDepositArticle(values, type) {
   const deposit = plainMoney(values.deposit);
+  const depositText = inlineMoneyText(deposit);
   const officeMode = normalizeOfficeContractMode(values.officeContractMode);
   if (type === "office" && officeMode === "renewal") {
     if (deposit) {
       return `
         <p class="contract-section">第九條：保證金：</p>
-        <p>乙方前已交付履約保證金新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元整，於本續約期間續作為乙方履行本契約義務之擔保，乙方本次續約無須另行給付履約保證金。租賃終止或屆滿並完成點交、費用結清後，由甲方無息返還。</p>
+        <p>乙方前已交付履約保證金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元整，於本續約期間續作為乙方履行本契約義務之擔保，乙方本次續約無須另行給付履約保證金。租賃終止或屆滿並完成點交、費用結清後，由甲方無息返還。</p>
       `;
     }
     return `
@@ -1172,7 +1180,7 @@ function renderWorkplaceDepositArticle(values, type) {
   if (hasDepositAmount(values)) {
     return `
       <p class="contract-section">第九條：保證金：</p>
-      <p>乙方應於本租約履行時同時給付甲方新台幣<span class="contract-fill-inline fill-money" data-preview-key="deposit">${escapeHtml(deposit)}</span>元整之保證金，以作為其履行本契約義務之擔保。租賃終止或屆滿並完成點交後，扣除積欠租金、費用或損害賠償後，由甲方無息返還之。</p>
+      <p>乙方應於本租約履行時同時給付甲方新台幣 <span class="contract-fill-inline fill-money" data-preview-key="deposit">${depositText}</span> 元整之保證金，以作為其履行本契約義務之擔保。租賃終止或屆滿並完成點交後，扣除積欠租金、費用或損害賠償後，由甲方無息返還之。</p>
     `;
   }
   if (type === "seat") {
@@ -1189,7 +1197,9 @@ function renderWorkplaceDepositArticle(values, type) {
 
 function renderWorkplaceContractDraft(values, type) {
   const monthly = plainMoney(values.monthly);
+  const monthlyText = inlineMoneyText(monthly);
   const originalRent = plainMoney(values.fixedPrice) || monthly;
+  const originalRentText = inlineMoneyText(originalRent);
   const total = contractPaymentTotalValue(values);
   const totalText = paymentMoneyText(total);
   const versionClass = /不用印版/.test(String(values.version || "")) ? "plain-version" : "stamp-version";
@@ -1201,7 +1211,7 @@ function renderWorkplaceContractDraft(values, type) {
   const priceLabel = isSeat ? "每月使用費" : "每月租金";
   const durationClause = isSeat
     ? `<p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，如雙方無異議則自動續約一個月。</p>`
-    : `<p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>`;
+    : `<p class="contract-section office-major-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>`;
   const useLimitClauses = isSeat
     ? [
         "乙方使用範圍限共享座位及甲方開放之公共區域，不得占用固定座位、會議室或其他未約定空間。",
@@ -1232,7 +1242,7 @@ function renderWorkplaceContractDraft(values, type) {
         "乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。",
         "本契約租賃期限未滿，乙方擬提前解約時，依雙方約定或一個月租金作為違約金。",
         "租金應於約定日前繳納，不得以任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。",
-        `甲方為使租賃標地物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案（此優惠方案為自由選擇），若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價${originalRent || "_____"}元/月計算。`,
+        `甲方為使租賃標地物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案（此優惠方案為自由選擇），若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價 ${originalRentText || "_____"} 元/月計算。`,
       ];
 
   return `
@@ -1246,16 +1256,16 @@ function renderWorkplaceContractDraft(values, type) {
         <p>出租人：${previewSpan("lessor", values.lessor)}（以下簡稱甲方），</p>
         <p>承租人：${previewSpan("lesseeCompany", values.lesseeCompany)}（以下簡稱乙方）</p>
         <p>因${eventText}，訂立本契約，雙方同意之條件如左：</p>
-        <p>第一條：租賃標的及使用範圍：${previewSpan("venueAddress", values.venueAddress)} ${subjectText}</p>
+        <p class="contract-section office-major-section">第一條：租賃標的及使用範圍：${previewSpan("venueAddress", values.venueAddress)} ${subjectText}</p>
 
         ${durationClause}
 
-        <p class="contract-section">第三條：費用：</p>
-        <p class="indent-1">一、${priceLabel}新台幣<span class="contract-fill-inline fill-money" data-preview-key="monthly">${escapeHtml(monthly)}</span>元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
+        <p class="contract-section office-major-section">第三條：費用：</p>
+        <p class="indent-1">一、${priceLabel}新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
         <p class="indent-1">二、費用於每期 <span class="contract-token-inline" data-preview-key="dueDay">${escapeHtml(values.dueDay)}</span> 前繳納</p>
         ${renderWorkplaceDepositLine(values, type)}
 
-        <p class="contract-section">第四條：使用限制：</p>
+        <p class="contract-section office-major-section">第四條：使用限制：</p>
         ${useLimitClauses.map((clause, index) => `<p class="indent-1">${"一二三四五六七八九十"[index]}、${escapeHtml(clause)}</p>`).join("")}
 
         <p class="contract-section">第五條：危險負擔：乙方應以善良管理人之注意使用租賃標的及公共區域，除因天災地變等不可抗拒之情形外，因乙方之故意或過失致場域、設備或第三人權益受損，乙方應負損害賠償之責。</p>
@@ -1264,14 +1274,8 @@ function renderWorkplaceContractDraft(values, type) {
         <p class="indent-1">一、乙方違反約定方法使用租賃標的，或拖欠費用超過七日，甲方得終止租約，押金不得抵算租金或費用。</p>
         <p class="indent-1">二、乙方於終止租約或租賃期滿不交還租賃標的或未完成點交，自終止租約或租賃期滿之翌日起，乙方應支付按日計算之違約金；所遺留設備或物品不搬者，視同乙方同意交由甲方處理。</p>
 
-        <p class="contract-section">第七條：其他特約事項：</p>
+        <p class="contract-section office-major-section">第七條：其他特約事項：</p>
         ${otherClauses.map((clause, index) => `<p class="indent-1">${index + 1}、${escapeHtml(clause)}</p>`).join("")}
-
-        ${isSeat ? "" : `
-          <p class="contract-section">第八條：應受強制執行之事項：</p>
-          <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
-          <p class="indent-1">2、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
-        `}
 
         <footer>第1頁（共2頁）</footer>
       </article>
@@ -1281,11 +1285,9 @@ function renderWorkplaceContractDraft(values, type) {
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
         </header>
         ${renderOfficialStamp(values)}
-        ${isSeat ? `
-          <p class="contract-section">第八條：應受強制執行之事項：</p>
-          <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
-          <p class="indent-1">2、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
-        ` : ""}
+        <p class="contract-section">第八條：應受強制執行之事項：</p>
+        <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
+        <p class="indent-1">2、乙方如有違反法令、公共秩序或其他影響甲方權益之情事，甲方得立即中止甲乙雙方租約，並得依法通報相關單位。</p>
 
         ${renderWorkplaceDepositArticle(values, type)}
         <p>甲乙雙方應於租約終止或屆滿時完成費用結清、場域點交及物品清空。乙方如有積欠租金、費用、違約金或損害賠償，甲方得自應返還款項中扣除；不足部分乙方仍應補足。</p>
@@ -1728,7 +1730,7 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
         node.textContent = paymentMoneyText(rawValue) || "待填";
         return;
       }
-      node.textContent = ["monthly", "deposit"].includes(fieldKey) ? plainMoney(rawValue) || "待填" : rawValue;
+      node.textContent = ["monthly", "deposit"].includes(fieldKey) ? paymentMoneyText(rawValue) || "待填" : rawValue;
     });
   };
   const setDraftField = (fieldKey, value) => {
