@@ -282,13 +282,15 @@ function sourceSystemOf(row) {
 function defaultOfficeContractMode(row) {
   if (!supportsContractMode(row)) return "";
   if (row?.isBlank) return "new";
-  if (row?.officeContractMode) return normalizeOfficeContractMode(row.officeContractMode);
-  if (row?.depositPolicy === "reuse_existing") return "renewal";
-  const text = [row?.item, row?.category, row?.notes, row?.deposit, row?.sourceSnapshot?.deposit].filter(Boolean).join(" ");
-  if (/新約|新合約|新客|首次|第一次/.test(text)) return "new";
-  if (/續約|續租|押金沿用|保證金沿用|未退|已付押金/.test(text)) return "renewal";
-  if (sourceSystemOf(row) === "old_crm_import") return "renewal";
   return "renewal";
+}
+
+function contractDraftForRow(row, draft = contractDrafts[contractDraftKey(row)] || {}) {
+  const cleanDraft = { ...draft };
+  if (!row?.isBlank && supportsContractMode(row)) {
+    cleanDraft.officeContractMode = "renewal";
+  }
+  return cleanDraft;
 }
 
 function shouldCollectDepositByValues(type, mode) {
@@ -576,6 +578,7 @@ function contractBaseFields(row) {
     bankName: defaults.bankName,
     bankCode: defaults.bankCode,
     bankAccount: defaults.bankAccount,
+    isBlankContract: Boolean(row?.isBlank),
     contractType: type,
     contractTypeLabel: contractTypeLabel(type),
     officeContractMode: officeMode,
@@ -604,7 +607,7 @@ function contractBaseFields(row) {
 
 function contractFields(row) {
   const key = contractDraftKey(row);
-  const values = contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...(contractDrafts[key] || {}) });
+  const values = contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...contractDraftForRow(row, contractDrafts[key] || {}) });
   return [
     {
       title: "甲方與館別",
@@ -672,7 +675,7 @@ function hasContractDraft(row) {
 
 function contractFlatValues(row) {
   const key = contractDraftKey(row);
-  return contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...(contractDrafts[key] || {}) });
+  return contractValuesWithDerivedTotals({ ...contractBaseFields(row), ...contractDraftForRow(row, contractDrafts[key] || {}) });
 }
 
 function plainMoney(value) {
@@ -680,7 +683,7 @@ function plainMoney(value) {
 }
 
 function calculatedPaymentTotalFromDraft(row, draft = {}) {
-  return calculatedPaymentTotalFromValues({ ...contractBaseFields(row), ...draft });
+  return calculatedPaymentTotalFromValues({ ...contractBaseFields(row), ...contractDraftForRow(row, draft) });
 }
 
 function calculatedPaymentTotalFromValues(values) {
@@ -695,6 +698,9 @@ function calculatedPaymentTotalFromValues(values) {
 
 function contractValuesWithDerivedTotals(values) {
   values.officeContractMode = normalizeOfficeContractMode(values.officeContractMode);
+  if (!values.isBlankContract && ["registration", "office"].includes(normalizeContractType(values.contractType))) {
+    values.officeContractMode = "renewal";
+  }
   values.officeContractModeLabel = officeContractModeLabel(values.officeContractMode);
   const autoTotal = calculatedPaymentTotalFromValues(values);
   if (autoTotal) values.paymentTotal = autoTotal;
@@ -703,9 +709,10 @@ function contractValuesWithDerivedTotals(values) {
 
 function calculatedTermCountFromDraft(row, draft = {}) {
   const base = contractBaseFields(row);
-  const startDate = draft.startDate ?? base.startDate;
-  const endDate = draft.endDate ?? base.endDate;
-  const periodMonths = numberFromText(draft.periodMonths ?? base.periodMonths);
+  const cleanDraft = contractDraftForRow(row, draft);
+  const startDate = cleanDraft.startDate ?? base.startDate;
+  const endDate = cleanDraft.endDate ?? base.endDate;
+  const periodMonths = numberFromText(cleanDraft.periodMonths ?? base.periodMonths);
   const duration = contractDurationMonthsFromValues(startDate, endDate);
   if (!duration || !periodMonths) return "";
   return String(Math.max(1, Math.ceil(duration / periodMonths)));
@@ -713,7 +720,8 @@ function calculatedTermCountFromDraft(row, draft = {}) {
 
 function calculatedEndDateFromDraft(row, draft = {}) {
   const base = contractBaseFields(row);
-  return addYearsToRocDate(draft.startDate ?? base.startDate, draft.contractYears ?? base.contractYears);
+  const cleanDraft = contractDraftForRow(row, draft);
+  return addYearsToRocDate(cleanDraft.startDate ?? base.startDate, cleanDraft.contractYears ?? base.contractYears);
 }
 
 function normalizedContractInputValue(fieldKey, value) {
