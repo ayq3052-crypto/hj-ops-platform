@@ -1054,8 +1054,9 @@ function renderRegistrationContractDraft(values) {
     ? `<p>租賃終止或屆滿並完成營業登記遷出、費用結清後，由甲方無息返還。乙方不得主張以履約保證金抵充租金之用。</p>`
     : `<p>金於乙方在租約終止或屆滿前遷移5日內向主管機關辦理將其登記地址遷離甲方標的或解散（所有以該地址營業登記均遷移，且不含歇業）後交還房屋並扣除其所積欠之租金等費用及債務後，由甲方無息返還之。就押租金乙方不得主張抵充租金之用。</p>`;
   const versionClass = /不用印版/.test(String(values.version || "")) ? "plain-version" : "stamp-version";
+  const modeClass = isRenewal ? "renewal-contract" : "new-contract";
   return `
-    <div class="html-contract-book registration-contract ${versionClass}">
+    <div class="html-contract-book registration-contract ${modeClass} ${versionClass}">
       <article class="html-contract-page registration-page-one">
         <header class="html-contract-logo">
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
@@ -1213,6 +1214,7 @@ function renderWorkplaceContractDraft(values, type) {
   const versionClass = /不用印版/.test(String(values.version || "")) ? "plain-version" : "stamp-version";
   const isSeat = type === "seat";
   const officeMode = normalizeOfficeContractMode(values.officeContractMode);
+  const modeClass = officeMode === "renewal" ? "renewal-contract" : "new-contract";
   const title = isSeat ? "共享座位使用契約" : officeMode === "renewal" ? "共同工作室租賃契約" : "辦公室租賃契約";
   const eventText = isSeat ? "共享座位使用事件" : "辦公室租賃事件";
   const subjectText = isSeat ? "共享座位及公共區域" : "辦公室及公共區域";
@@ -1254,7 +1256,7 @@ function renderWorkplaceContractDraft(values, type) {
       ];
 
   return `
-    <div class="html-contract-book workplace-contract ${type}-contract ${versionClass}">
+    <div class="html-contract-book workplace-contract ${type}-contract ${modeClass} ${versionClass}">
       <article class="html-contract-page">
         <header class="html-contract-logo">
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
