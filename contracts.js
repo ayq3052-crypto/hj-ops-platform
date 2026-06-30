@@ -1189,6 +1189,7 @@ function renderWorkplaceDepositArticle(values, type) {
 
 function renderWorkplaceContractDraft(values, type) {
   const monthly = plainMoney(values.monthly);
+  const originalRent = plainMoney(values.fixedPrice) || monthly;
   const total = contractPaymentTotalValue(values);
   const totalText = paymentMoneyText(total);
   const versionClass = /不用印版/.test(String(values.version || "")) ? "plain-version" : "stamp-version";
@@ -1231,7 +1232,7 @@ function renderWorkplaceContractDraft(values, type) {
         "乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。",
         "本契約租賃期限未滿，乙方擬提前解約時，依雙方約定或一個月租金作為違約金。",
         "租金應於約定日前繳納，不得以任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。",
-        "甲方為使租賃標地物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案（此優惠方案為自由選擇），若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價32000元/月計算。",
+        `甲方為使租賃標地物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案（此優惠方案為自由選擇），若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價${originalRent || "_____"}元/月計算。`,
       ];
 
   return `
