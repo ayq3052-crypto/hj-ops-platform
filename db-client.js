@@ -180,13 +180,13 @@
 
   const contractModeFromPolicy = (policy) => {
     if (policy === "reuse_existing") return "renewal";
-    if (policy === "collect_first_period") return "new";
     return "";
   };
 
   const customerToCrmRow = (row, index, contract = null) => {
     const snapshot = row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
     const contractDraft = snapshot.contractDraft && typeof snapshot.contractDraft === "object" ? snapshot.contractDraft : {};
+    const storedOfficeMode = textOrEmpty(contractDraft.officeContractMode);
     const cycle = paymentCycleFromContract(row, contract);
     const monthly = contract?.monthly_amount ?? row.monthly_amount;
     const deposit = contract?.deposit_amount ?? row.deposit_amount;
@@ -222,7 +222,7 @@
       uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
       contractTerm: textOrEmpty(snapshot.contractTerm),
       depositPolicy: textOrEmpty(contract?.deposit_policy),
-      officeContractMode: textOrEmpty(contractDraft.officeContractMode) || contractModeFromPolicy(contract?.deposit_policy),
+      officeContractMode: storedOfficeMode === "renewal" ? "renewal" : contractModeFromPolicy(contract?.deposit_policy),
       contractStatus: textOrEmpty(contract?.contract_status),
       stampVersion: textOrEmpty(contract?.stamp_version),
     };

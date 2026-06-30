@@ -674,34 +674,68 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .registration-contract .registration-page-one {
-  padding-top: 6.4mm;
-  font-size: 14.5px;
-  line-height: 1.02;
+  padding-top: 10.5mm;
+  font-size: 14px;
+  line-height: 1.14;
 }
 
 .registration-contract .registration-page-one .html-contract-logo {
-  margin-bottom: 1px;
+  margin-bottom: 8px;
 }
 
 .registration-contract .registration-page-one .html-contract-logo img {
-  width: 48px;
+  width: 82px;
+}
+
+.registration-contract .html-contract-page:nth-child(2) .html-contract-logo.second {
+  margin-bottom: 86px;
 }
 
 .registration-contract .registration-page-one h2 {
-  margin-bottom: 3px;
-  font-size: 29px;
+  margin-bottom: 52px;
+  font-size: 25px;
 }
 
 .registration-contract .registration-page-one .contract-section {
-  margin-top: 4px;
+  margin-top: 10px;
 }
 
 .registration-contract .registration-page-one p {
-  margin-bottom: 0.2px;
+  margin-bottom: 2px;
 }
 
 .registration-contract .registration-page-one .contract-fill-inline {
   line-height: 1;
+}
+
+.registration-contract .registration-page-one .registration-major-section {
+  margin-top: 15px;
+}
+
+.registration-contract .registration-page-one .registration-rent-subline {
+  margin-top: 1px;
+  padding-left: 2.5em;
+}
+
+.registration-contract .registration-page-one .contract-fill-inline.fill-money,
+.registration-contract .registration-page-one .contract-static-money {
+  display: inline;
+  border-bottom: 0;
+  margin-left: 0.12em;
+  margin-right: 0.12em;
+  padding: 0;
+}
+
+.registration-contract .html-contract-page:nth-child(2) .signature-block .bank-lines {
+  margin-top: 54px;
+}
+
+.registration-contract .html-contract-page:nth-child(2) .signature-block {
+  margin-top: 73px;
+}
+
+.registration-contract .html-contract-page:nth-child(2) .lessee-block {
+  margin-top: 84px;
 }
 
 .html-contract-page h2 {

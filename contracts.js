@@ -284,12 +284,11 @@ function defaultOfficeContractMode(row) {
   if (row?.isBlank) return "new";
   if (row?.officeContractMode) return normalizeOfficeContractMode(row.officeContractMode);
   if (row?.depositPolicy === "reuse_existing") return "renewal";
-  if (row?.depositPolicy === "collect_first_period") return "new";
   const text = [row?.item, row?.category, row?.notes, row?.deposit, row?.sourceSnapshot?.deposit].filter(Boolean).join(" ");
   if (/新約|新合約|新客|首次|第一次/.test(text)) return "new";
   if (/續約|續租|押金沿用|保證金沿用|未退|已付押金/.test(text)) return "renewal";
   if (sourceSystemOf(row) === "old_crm_import") return "renewal";
-  return "new";
+  return "renewal";
 }
 
 function shouldCollectDepositByValues(type, mode) {
@@ -1058,16 +1057,17 @@ function renderRegistrationContractDraft(values) {
         <p>出租人：${previewSpan("lessor", values.lessor)}（以下簡稱甲方），</p>
         <p>承租人：${previewSpan("lesseeCompany", values.lesseeCompany)}（以下簡稱乙方）</p>
         <p>因工作室營業登記事件，訂立本契約，雙方同意之條件如左：</p>
-        <p>第一條：所在地及使用範圍：${previewSpan("venueAddress", values.venueAddress)}</p>
+        <p class="contract-section registration-major-section">第一條：所在地及使用範圍：${previewSpan("venueAddress", values.venueAddress)}</p>
 
-        <p class="contract-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>
+        <p class="contract-section registration-major-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>
 
-        <p class="contract-section">第三條：租金：</p>
-        <p class="indent-1">一、定價每月 <span class="contract-static-money">3,000</span> 元，折扣後每月租金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元，（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
+        <p class="contract-section registration-major-section">第三條：租金：</p>
+        <p class="indent-1 registration-rent-line">一、定價每月 <span class="contract-static-money">3,000</span> 元；折扣後每月租金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元。</p>
+        <p class="indent-1 registration-rent-subline">（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
         <p class="indent-1">二、租金於每期 <span class="contract-token-inline" data-preview-key="dueDay">${escapeHtml(values.dueDay)}</span> 前繳納</p>
         ${depositLine}
 
-        <p class="contract-section">第四條：使用租物之限制：</p>
+        <p class="contract-section registration-major-section">第四條：使用租物之限制：</p>
         <p class="indent-1">一、乙方不得將使用權限之全部或一部分轉租、出租、頂讓，或以其他變相方法使用工作室。</p>
         <p class="indent-1">二、每一承租戶僅能申請一家公司執照。</p>
         <p class="indent-1">三、乙方於租賃期滿應立即將工作空間遷讓交還，不得向甲方請求遷移費或任何費用。</p>
@@ -1081,7 +1081,7 @@ function renderRegistrationContractDraft(values) {
         <p class="indent-1">一、乙方違反約定方法使用工作室，或拖欠房租，超過七日甲方得終止租約，押金不得抵算租金。</p>
         <p class="indent-1">二、乙方於終止租約或租賃期滿不交還工作室，自終止租約或租賃期滿之翌日起，乙方應支付案房租五倍計算之違約金，所遺留設備不搬者，視同乙方同意交由甲方處理。</p>
 
-        <p class="contract-section">第七條：其他特約事項：</p>
+        <p class="contract-section registration-major-section">第七條：其他特約事項：</p>
         <p class="indent-1">一、乙方除水電費（含公共電費）、管理費、網路費外，營業上必須繳納之稅捐需自行負擔。</p>
         <p class="indent-1">二、乙方以甲方地址申請公司執照者，於合約終止時，需將公司登記遷出，甲方並依稅務等單位要求每月呈報遷出名單公文，否則甲方得將通報乙方營業登記遷出。</p>
         <p class="indent-1">三、甲乙雙方僅有契約履行之責，乙方如與其他人有債務糾紛與法律責任，由乙方自行負責與甲方無關。</p>
