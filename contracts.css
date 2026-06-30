@@ -658,9 +658,18 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   -webkit-font-smoothing: subpixel-antialiased;
 }
 
-.renewal-contract.office-contract .html-contract-page,
+.renewal-contract.office-contract .html-contract-page {
+  padding-top: 1.5mm;
+  padding-left: 10mm;
+  padding-right: 10mm;
+}
+
 .renewal-contract.registration-contract .html-contract-page {
   padding-top: 5.5mm;
+}
+
+.renewal-contract.office-contract .html-contract-logo {
+  margin-bottom: 3px;
 }
 
 .html-contract-logo {
@@ -763,23 +772,24 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .office-contract .html-contract-page:first-child {
-  line-height: 1.18;
+  line-height: 1.14;
 }
 
 .office-contract .html-contract-page:first-child h2 {
-  margin-bottom: 52px;
+  margin-bottom: 10px;
+  font-size: 24px;
 }
 
 .office-contract .html-contract-page:first-child p {
-  margin-bottom: 2px;
+  margin-bottom: 1.4px;
 }
 
 .office-contract .html-contract-page:first-child .contract-section {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .office-contract .html-contract-page:first-child .office-major-section {
-  margin-top: 16px;
+  margin-top: 12px;
 }
 
 .office-contract .html-contract-page:nth-child(2) {
