@@ -261,15 +261,21 @@
 
   const paymentDbRowToLegacy = (row) => {
     const snapshot = row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
+    const manualStatus = snapshot.manualStatus || snapshot.manual_status || (row.row_status === "ignored" ? "nonbillable" : "");
+    const dbCycle = textOrEmpty(row.payment_cycle);
+    const snapshotCycle = textOrEmpty(snapshot.cycle);
+    const cycle = dbCycle && dbCycle.toLowerCase() !== "custom" ? dbCycle : snapshotCycle || dbCycle;
     return {
       ...snapshot,
       section: textOrEmpty(row.section || snapshot.section || "待確認"),
       id: textOrEmpty(row.customer_no || snapshot.id),
       name: textOrEmpty(row.customer_name || snapshot.name),
       company: textOrEmpty(row.company_name || snapshot.company),
-      cycle: textOrEmpty(row.payment_cycle || snapshot.cycle),
+      cycle: textOrEmpty(cycle),
       price: textOrEmpty(snapshot.price || moneyText(row.amount_due)),
+      paidDate: textOrEmpty(snapshot.paidDate || row.payment_date),
       paidAmount: textOrEmpty(snapshot.paidAmount || moneyText(row.amount_paid)),
+      manualStatus: textOrEmpty(manualStatus),
       invoice: textOrEmpty(row.invoice_number || snapshot.invoice),
       note: textOrEmpty(row.memo || snapshot.note),
     };
