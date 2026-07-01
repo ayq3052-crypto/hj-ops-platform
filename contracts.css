@@ -816,7 +816,7 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .renewal-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.huanrui-stamp {
-  top: 38%;
+  top: 51%;
 }
 
 .office-contract .html-contract-page:nth-child(2) .signature-block {
@@ -1618,7 +1618,7 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   }
 
   body.contract-body.is-printing-contract .contract-print-root .renewal-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.huanrui-stamp {
-    top: 38%;
+    top: 51%;
   }
 }
 
