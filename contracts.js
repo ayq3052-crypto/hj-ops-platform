@@ -991,7 +991,7 @@ function renderContractMapping(row) {
           <span class="contract-warning compact neutral">${draftNoticeLabel(row)}</span>
           <span class="contract-warning compact ${missingCount ? "warn" : "ok"}">${fieldStatusLabel(missingCount)}</span>
           ${hasContractDraft(row) ? `<button class="ghost compact" type="button" data-contract-draft-reset>${stackedLabel("清除", "暫存")}</button>` : ""}
-          <button class="compact ${contractEditing ? "is-editing" : ""}" type="button" data-contract-edit-toggle>${contractEditing ? stackedLabel("完成", "暫存") : stackedLabel("修改", "欄位")}</button>
+          <button class="compact ${contractEditing ? "is-editing" : ""}" type="button" data-contract-edit-toggle>${contractEditing ? stackedLabel("完成", "修改") : stackedLabel("修改", "欄位")}</button>
           <button class="compact" type="button" data-contract-preview-open>${stackedLabel("合約", "預覽")}</button>
           <button type="button" data-contract-print>存成 PDF</button>
         </div>

@@ -1280,10 +1280,10 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 }
 
 .contract-mapping-actions button.is-editing {
-  border-color: #0f766e;
-  background: #0f766e;
-  color: #fff;
-  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
+  border-color: rgba(15, 118, 110, 0.45);
+  background: #d7f7ef;
+  color: #075e55;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.14);
 }
 
 .contract-warning {
