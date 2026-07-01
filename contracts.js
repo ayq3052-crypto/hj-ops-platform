@@ -1071,8 +1071,7 @@ function renderRegistrationContractDraft(values) {
         <p class="contract-section registration-major-section">第二條：租賃期限：自 <span class="contract-fill-inline fill-date" data-preview-key="startDate">${escapeHtml(values.startDate)}</span> 起，至 <span class="contract-fill-inline fill-date" data-preview-key="endDate">${escapeHtml(values.endDate)}</span> 止。</p>
 
         <p class="contract-section registration-major-section">第三條：租金：</p>
-        <p class="indent-1 registration-rent-line">一、定價每月 <span class="contract-static-money">3,000</span> 元；折扣後每月租金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元。</p>
-        <p class="indent-1 registration-rent-subline">（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
+        <p class="indent-1 registration-rent-line">一、定價每月 <span class="contract-static-money">3,000</span> 元；折扣後每月租金新台幣 <span class="contract-fill-inline fill-money" data-preview-key="monthly">${monthlyText}</span> 元。（每 <span class="contract-token-inline" data-preview-key="periodMonths">${escapeHtml(values.periodMonths)}</span> 個月為一期，共 <span class="contract-token-inline" data-preview-key="termCount">${escapeHtml(values.termCount)}</span> 期，匯款手續費由乙方自行負責）</p>
         <p class="indent-1">二、租金於每期 <span class="contract-token-inline" data-preview-key="dueDay">${escapeHtml(values.dueDay)}</span> 前繳納</p>
         ${depositLine}
 
