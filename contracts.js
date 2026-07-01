@@ -1096,7 +1096,7 @@ function renderRegistrationContractDraft(values) {
         <p class="indent-1">四、乙方如有寄放任何物品於甲方之處，甲方不負任何保管及法律責任，其責任問題均由乙方負全責。但若營業登記事項因甲方因素未能核准則雙方無條件解約退回押金及已繳納租金，並且不得收受任何違約金。</p>
         <p class="indent-1">五、本契約租賃期限未滿，乙方擬解約時，以一個月租金（以原價 <span class="contract-static-money">3,000</span> 元計，且當月份已付租金除外）作為違約金。</p>
         <p class="indent-1">六、租金應於約定日前繳納，不得任何理由拖延或拒絕，若遲繳每日得向承租人收取總額3%滯納金。</p>
-        <p class="indent-1">七、甲方為使租賃標的物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案，若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價 <span class="contract-static-money">3,000</span> 元/月計算</p>
+        <p class="indent-1">七、甲方為使租賃標的物出租順利，並減輕乙方之租金負擔，特提供乙方之租賃優惠選擇方案，若乙方違反合約限制或提前辦理退租，乙方無條件同意甲方將當初協議之優惠款項從押金中扣除。以原價 <span class="contract-static-money">3,000</span> 元/月計算。</p>
 
         <footer>第1頁（共2頁）</footer>
       </article>
