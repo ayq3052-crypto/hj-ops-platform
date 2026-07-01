@@ -344,7 +344,10 @@
     </main>
     <script src="./db-client.js?v=20260629-contract-print-1"></script>
     <script>
-      const allowedAccount = "ayq3052@gmail.com";
+      const allowedAccountHashes = [
+        "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
+        "24d01bdac1b7a8fa3464270e827448baf645cad8f6edf7414574df90f54cc1f1",
+      ];
       const authKey = "hj-home-auth-v2";
       const unlockKey = "hj-home-unlock-until-v2";
       const failKey = "hj-home-login-fail-v2";
@@ -367,11 +370,17 @@
 
       const bytesToHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
-      const hashCredential = async (account, password, salt) => {
-        const payload = `${salt}\n${account.trim()}\n${password}`;
-        const bytes = new TextEncoder().encode(payload);
+      const hashText = async (value) => {
+        const bytes = new TextEncoder().encode(String(value || ""));
         const digest = await crypto.subtle.digest("SHA-256", bytes);
         return bytesToHex(new Uint8Array(digest));
+      };
+
+      const accountHash = (account) => hashText(String(account || "").trim().toLowerCase());
+
+      const hashCredential = async (account, password, salt) => {
+        const payload = `${salt}\n${account.trim().toLowerCase()}\n${password}`;
+        return hashText(payload);
       };
 
       const createSalt = () => {
@@ -388,6 +397,35 @@
         }
       };
 
+      const hasSavedCredential = () => {
+        const auth = savedAuth();
+        if (!auth) return false;
+        if (auth.accounts && Object.keys(auth.accounts).length) return true;
+        return Boolean(auth.salt && auth.hash);
+      };
+
+      const credentialFor = async (account) => {
+        const auth = savedAuth();
+        if (!auth) return null;
+        const key = await accountHash(account);
+        if (auth.accounts?.[key]) return auth.accounts[key];
+        if (auth.account && auth.account === account.trim().toLowerCase() && auth.salt && auth.hash) {
+          return { salt: auth.salt, hash: auth.hash };
+        }
+        return null;
+      };
+
+      const saveCredential = async (account, credential) => {
+        const auth = savedAuth();
+        const key = await accountHash(account);
+        const accounts = auth?.accounts ? { ...auth.accounts } : {};
+        if (auth?.account && auth.salt && auth.hash) {
+          accounts[await accountHash(auth.account)] = { salt: auth.salt, hash: auth.hash };
+        }
+        accounts[key] = credential;
+        localStorage.setItem(authKey, JSON.stringify({ version: 3, accounts }));
+      };
+
       const nextUrl = () => {
         const raw = new URLSearchParams(window.location.search).get("next") || "";
         if (!raw) return "";
@@ -400,7 +438,7 @@
       };
 
       const unlockedUntil = () => Number(localStorage.getItem(unlockKey) || 0);
-      const hasValidUnlock = () => isLocalTest || (savedAuth() && unlockedUntil() > Date.now());
+      const hasValidUnlock = () => isLocalTest || (hasSavedCredential() && unlockedUntil() > Date.now());
       const failedState = () => {
         try {
           return JSON.parse(localStorage.getItem(failKey) || "null") || { count: 0, cooldownUntil: 0 };
@@ -474,10 +512,10 @@
           if (target) window.location.assign(target);
           return;
         }
-        const auth = savedAuth();
-        loginButton.textContent = auth ? "登入" : "設定帳號密碼";
-        resetButton.hidden = !auth;
-        setNote(auth ? "" : "首次使用請先設定帳號密碼。");
+        const hasCredential = hasSavedCredential();
+        loginButton.textContent = hasCredential ? "登入" : "設定帳號密碼";
+        resetButton.hidden = !hasCredential;
+        setNote(hasCredential ? "" : "首次使用請先設定帳號密碼。");
         setLocked(!hasValidUnlock());
         if (hasValidUnlock()) setNote(formatRemaining());
         window.requestAnimationFrame(() => {
@@ -509,7 +547,7 @@
         } catch {
           // 入口鎖重設不應被遠端登出狀態卡住。
         }
-        accountInput.value = allowedAccount;
+        accountInput.value = "";
         passwordInput.value = "";
         syncMode();
         setNote("已清除入口密碼，請重新設定。");
@@ -533,7 +571,8 @@
           setNote("帳號請使用 Email，這樣資料庫才認得這個使用者。", "error");
           return;
         }
-        if (account !== allowedAccount) {
+        const key = await accountHash(account);
+        if (!allowedAccountHashes.includes(key)) {
           recordFailure();
           setNote("此入口只允許正式帳號登入。", "error");
           return;
@@ -541,19 +580,19 @@
 
         loginButton.disabled = true;
         try {
-          const auth = savedAuth();
-          if (!auth) {
+          const credential = await credentialFor(account);
+          if (!credential) {
             await window.HJ_DB.signInOrSignUp(account, password, { preferSignUp: true });
             const salt = createSalt();
             const hash = await hashCredential(account, password, salt);
-            localStorage.setItem(authKey, JSON.stringify({ account, salt, hash }));
+            await saveCredential(account, { salt, hash });
             clearFailures();
             unlockHome();
             return;
           }
 
-          const hash = await hashCredential(account, password, auth.salt);
-          if (account === auth.account && hash === auth.hash) {
+          const hash = await hashCredential(account, password, credential.salt);
+          if (hash === credential.hash) {
             await window.HJ_DB.signInOrSignUp(account, password);
             clearFailures();
             unlockHome();
