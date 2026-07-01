@@ -894,7 +894,7 @@ function paymentRowForRef(ref, fallback = {}) {
 }
 
 function manualDraftIsLive(item) {
-  if (!item.paymentRefs?.length) return true;
+  if (!item.paymentRefs?.length) return !manualDraftHasBlankBody(item);
   return item.paymentRefs.some((ref) => paymentRefExists(ref, item));
 }
 

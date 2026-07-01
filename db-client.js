@@ -313,13 +313,15 @@
     const sourceMonth = metadata.source_month || (row.scheduled_for ? monthLabel(new Date(row.scheduled_for).getMonth() + 1) : "6月");
     const sourceId = metadata.source_id || row.id;
     const label = String(row.title || "").split(" / ").pop() || "訊息草稿";
+    const fallbackPaymentRefs = [{ venue: row.branch_code, month: sourceMonth, year: metadata.source_year || 2026, id: row.customer_no }];
+    const paymentRefs = Array.isArray(metadata.payment_refs) && metadata.payment_refs.length ? metadata.payment_refs : fallbackPaymentRefs;
     return {
       id: sourceId,
       venue: row.branch_code,
       month: sourceMonth,
       year: metadata.source_year || 2026,
       status: metadata.source_status || "today",
-      paymentRefs: metadata.payment_refs || [{ venue: row.branch_code, month: sourceMonth, id: row.customer_no }],
+      paymentRefs,
       kind: row.draft_type === "renewal" ? "續約" : "繳費追蹤",
       title: row.title || [row.customer_no, row.company_name || row.customer_name].filter(Boolean).join(" "),
       subtitle: row.company_name || row.customer_name || "",
