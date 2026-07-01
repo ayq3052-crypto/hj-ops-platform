@@ -1729,20 +1729,8 @@ contractSummary.addEventListener("click", (event) => {
     return;
   }
   if (editButton) {
-    const enteringEditMode = !contractEditing;
-    contractEditing = enteringEditMode;
+    contractEditing = !contractEditing;
     render();
-    if (enteringEditMode) {
-      window.requestAnimationFrame(() => {
-        const firstField = contractSummary.querySelector("[data-contract-field]");
-        if (!firstField) return;
-        firstField.focus();
-        if (typeof firstField.selectionStart === "number") {
-          const textLength = firstField.value.length;
-          firstField.setSelectionRange(textLength, textLength);
-        }
-      });
-    }
   }
 });
 
