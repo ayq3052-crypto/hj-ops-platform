@@ -3,7 +3,7 @@
     crm: ["./app.js?v=20260629-contract-print-1"],
     contracts: ["./contracts.js?v=20260701-contract-edit-no-autofocus-1"],
     payments: ["./ops/payments.js?v=20260701-drafts-payments-2"],
-    drafts: ["./ops/drafts.js?v=20260701-drafts-blankfix-2"],
+    drafts: ["./ops/drafts.js?v=20260701-drafts-typeguard-1"],
   };
 
   const statusText = {
