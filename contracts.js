@@ -354,6 +354,25 @@ function contractVersionLabel(version = blankVersion) {
   return version === "plain" ? "不用印版" : "用印版";
 }
 
+function safeContractFileName(value) {
+  return String(value || "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function contractPrintTitle(row) {
+  const venue = getVenueConfig(row?.venue || activeVenue).label || "未指定館別";
+  const version = contractVersionLabel();
+  const typeLabel = contractTypeLabel(contractType(row));
+  const id = row?.isBlank ? "空白" : displayId(row);
+  const target = row?.isBlank
+    ? `${typeLabel}空白合約`
+    : row?.company || row?.name || "未命名客戶";
+
+  return safeContractFileName(`HJ ${venue} 客戶合約 ${version} - ${id} ${target}`);
+}
+
 function digitsOnly(value) {
   return String(value || "").replace(/[^\d]/g, "");
 }
@@ -1568,9 +1587,15 @@ function resizeContractTextareas(root = document) {
   });
 }
 
+let contractPrintPreviousTitle = "";
+
 function cleanupPrintRoot() {
   document.querySelector(".contract-print-root")?.remove();
   document.body.classList.remove("is-printing-contract");
+  if (contractPrintPreviousTitle) {
+    document.title = contractPrintPreviousTitle;
+    contractPrintPreviousTitle = "";
+  }
 }
 
 function printContractPdf() {
@@ -1586,6 +1611,8 @@ function printContractPdf() {
   printRoot.appendChild(book.cloneNode(true));
   document.body.appendChild(printRoot);
   document.body.classList.add("is-printing-contract");
+  contractPrintPreviousTitle = document.title || "HJ 客戶合約";
+  document.title = contractPrintTitle(row);
   window.print();
 }
 
