@@ -1187,6 +1187,10 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   gap: 12px;
 }
 
+.contract-mapping-page.is-editing {
+  border-radius: 10px;
+}
+
 .contract-mapping-head {
   display: flex;
   align-items: center;
@@ -1198,12 +1202,38 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   padding: 14px 16px;
 }
 
+.contract-mapping-page.is-editing .contract-mapping-head {
+  border-color: rgba(20, 184, 166, 0.62);
+  background: #effdf9;
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+}
+
+.contract-mapping-title-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
 .contract-mapping-head span {
   display: block;
   color: var(--muted);
   font-size: 12px;
   font-weight: 900;
-  margin-bottom: 5px;
+  margin-bottom: 0;
+}
+
+.contract-edit-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0;
+  padding: 0 10px;
 }
 
 .contract-mapping-head h3 {
@@ -1247,6 +1277,13 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 .contract-mapping-actions button.ghost {
   border-color: rgba(100, 116, 139, 0.28);
   color: #64748b;
+}
+
+.contract-mapping-actions button.is-editing {
+  border-color: #0f766e;
+  background: #0f766e;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.22);
 }
 
 .contract-warning {
@@ -1313,6 +1350,11 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
+}
+
+.contract-mapping-page.is-editing .contract-field-group {
+  border-color: rgba(20, 184, 166, 0.38);
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.08);
 }
 
 .contract-field-group h4 {
@@ -1420,7 +1462,8 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   min-height: 64px;
   border: 0;
   border-radius: 0;
-  background: #fffef8;
+  background: #f0fdfa;
+  box-shadow: inset 5px 0 0 rgba(20, 184, 166, 0.55);
   outline: none;
   padding: 10px 14px;
 }
@@ -1434,7 +1477,10 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
 
 .contract-field-row input:focus,
 .contract-field-row textarea:focus {
-  box-shadow: inset 0 0 0 3px rgba(126, 87, 194, 0.18);
+  background: #ffffff;
+  box-shadow:
+    inset 5px 0 0 #0f766e,
+    inset 0 0 0 3px rgba(20, 184, 166, 0.22);
 }
 
 .online-contract-paper.compact {

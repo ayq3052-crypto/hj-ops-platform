@@ -978,17 +978,20 @@ function renderContractMapping(row) {
   const titleText = row.isBlank ? `${getVenueConfig(row.venue || activeVenue).label} 空白${contractTypeLabel(contractType(row))}合約` : `${displayId(row)} ${row.company || row.name || "未命名"}`;
 
   return `
-    <section class="contract-mapping-page">
+    <section class="contract-mapping-page${contractEditing ? " is-editing" : ""}">
       <div class="contract-mapping-head">
         <div>
-          <span>合約檢查</span>
+          <div class="contract-mapping-title-line">
+            <span>合約檢查</span>
+            ${contractEditing ? `<strong class="contract-edit-state">編輯中</strong>` : ""}
+          </div>
           <h3>${escapeHtml(titleText)}</h3>
         </div>
         <div class="contract-mapping-actions">
           <span class="contract-warning compact neutral">${draftNoticeLabel(row)}</span>
           <span class="contract-warning compact ${missingCount ? "warn" : "ok"}">${fieldStatusLabel(missingCount)}</span>
           ${hasContractDraft(row) ? `<button class="ghost compact" type="button" data-contract-draft-reset>${stackedLabel("清除", "暫存")}</button>` : ""}
-          <button class="compact" type="button" data-contract-edit-toggle>${contractEditing ? stackedLabel("完成", "暫存") : stackedLabel("修改", "欄位")}</button>
+          <button class="compact ${contractEditing ? "is-editing" : ""}" type="button" data-contract-edit-toggle>${contractEditing ? stackedLabel("完成", "暫存") : stackedLabel("修改", "欄位")}</button>
           <button class="compact" type="button" data-contract-preview-open>${stackedLabel("合約", "預覽")}</button>
           <button type="button" data-contract-print>存成 PDF</button>
         </div>
@@ -1726,8 +1729,16 @@ contractSummary.addEventListener("click", (event) => {
     return;
   }
   if (editButton) {
-    contractEditing = !contractEditing;
+    const enteringEditMode = !contractEditing;
+    contractEditing = enteringEditMode;
     render();
+    if (enteringEditMode) {
+      window.requestAnimationFrame(() => {
+        const firstField = contractSummary.querySelector("[data-contract-field]");
+        firstField?.focus?.();
+        firstField?.select?.();
+      });
+    }
   }
 });
 
