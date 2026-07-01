@@ -1055,8 +1055,9 @@ function renderRegistrationContractDraft(values) {
     : `<p>金於乙方在租約終止或屆滿前遷移5日內向主管機關辦理將其登記地址遷離甲方標的或解散（所有以該地址營業登記均遷移，且不含歇業）後交還房屋並扣除其所積欠之租金等費用及債務後，由甲方無息返還之。就押租金乙方不得主張抵充租金之用。</p>`;
   const versionClass = /不用印版/.test(String(values.version || "")) ? "plain-version" : "stamp-version";
   const modeClass = isRenewal ? "renewal-contract" : "new-contract";
+  const blankClass = values.isBlankContract ? "blank-template-contract" : "";
   return `
-    <div class="html-contract-book registration-contract ${modeClass} ${versionClass}">
+    <div class="html-contract-book registration-contract ${modeClass} ${versionClass} ${blankClass}">
       <article class="html-contract-page registration-page-one">
         <header class="html-contract-logo">
           <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
