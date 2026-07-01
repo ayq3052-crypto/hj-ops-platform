@@ -22,6 +22,10 @@
   --field-label-accent-warm: #e65f2e;
   --field-label-accent-note: #7a42d8;
   --field-readonly: #fcfcfd;
+  --crm-accent: #3157d5;
+  --crm-accent-soft: #edf3ff;
+  --contract-accent: #e65f2e;
+  --contract-accent-soft: #fff1e8;
   --shadow: 0 18px 46px rgba(24, 32, 51, 0.11);
   --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", ui-monospace, monospace;
   font-family: "Fira Sans", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
@@ -46,6 +50,10 @@ body[data-venue="huanrui"] {
   --field-label-accent: #e65f2e;
   --field-label-accent-warm: #e65f2e;
   --field-label-accent-note: #bf5a1f;
+  --crm-accent: #e65f2e;
+  --crm-accent-soft: #fff1e8;
+  --contract-accent: #3157d5;
+  --contract-accent-soft: #edf3ff;
   background:
     linear-gradient(180deg, rgba(230, 95, 46, 0.08), rgba(255, 255, 255, 0) 340px),
     #f8f5f2;
@@ -982,23 +990,87 @@ body[data-venue="taichung"] .record-card.active .record-id {
 }
 
 .profile-form {
-  --profile-label: 116px;
-  --profile-row: 54px;
+  --profile-label: 112px;
+  --profile-row: 52px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0;
+  grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.88fr);
+  gap: 12px;
   align-items: start;
+  background: #fbfcfe;
+  padding: 12px;
 }
 
 .profile-column {
-  display: grid;
-  grid-template-rows: repeat(9, var(--profile-row));
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-width: 0;
+  padding: 0;
 }
 
 .profile-column.left {
-  border-right: 1px solid var(--line);
+  border-right: 0;
+}
+
+.profile-section {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.profile-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 13px;
+  border-bottom: 1px solid var(--line);
+  background: #f6f8fb;
+  box-shadow: inset 4px 0 0 var(--field-label-accent);
+}
+
+.profile-section-head strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.profile-section-head small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.profile-section-contract .profile-section-head {
+  background: var(--field-label);
+  box-shadow: inset 4px 0 0 var(--crm-accent);
+}
+
+.profile-section-management .profile-section-head {
+  background: var(--field-label);
+  box-shadow: inset 4px 0 0 var(--field-label-accent);
+}
+
+.profile-section-payment .profile-section-head {
+  background: var(--field-label);
+  box-shadow: inset 4px 0 0 var(--field-label-accent);
+}
+
+.profile-section-note .profile-section-head {
+  background: var(--field-label);
+  box-shadow: inset 4px 0 0 var(--crm-accent);
+}
+
+.profile-section-contract .profile-field {
+  grid-template-columns: var(--profile-label) minmax(0, 1fr);
+  min-height: 60px;
+}
+
+.profile-section-contract .profile-field:has(textarea[name="address"]) {
+  min-height: 94px;
 }
 
 .profile-field {
@@ -1009,7 +1081,7 @@ body[data-venue="taichung"] .record-card.active .record-id {
   min-width: 0;
 }
 
-.profile-column .profile-field:last-child {
+.profile-section .profile-field:last-child {
   border-bottom: 0;
 }
 
@@ -1026,8 +1098,18 @@ body[data-venue="taichung"] .record-card.active .record-id {
   box-shadow: inset 4px 0 0 var(--field-label-accent);
 }
 
+.profile-section-contract .profile-field span,
+.profile-section-note .profile-field span {
+  box-shadow: inset 4px 0 0 var(--crm-accent);
+}
+
+.profile-section-management .profile-field span,
+.profile-section-payment .profile-field span {
+  box-shadow: inset 4px 0 0 var(--field-label-accent);
+}
+
 .date-field > span {
-  box-shadow: inset 4px 0 0 var(--field-label-accent-warm);
+  box-shadow: inset 4px 0 0 var(--contract-accent);
 }
 
 .profile-wide-field > span {
@@ -1063,22 +1145,38 @@ body[data-venue="taichung"] .record-card.active .record-id {
 }
 
 .profile-field input[name="coNumber"],
-.inline-inputs input[name="coNumber"] {
+.profile-field input[name="idNumber"],
+.inline-inputs input[name="coNumber"],
+.inline-inputs input[name="idNumber"] {
+  color: #18415f;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.profile-field:has(input[name="coNumber"]) > span,
+.profile-field:has(input[name="idNumber"]) > span {
+  background: #edf7ff;
+  color: #18415f;
+  box-shadow: inset 4px 0 0 #0ea5e9;
+}
+
+.profile-section-contract .profile-field:has(input[name="coNumber"]) > span,
+.profile-section-contract .profile-field:has(input[name="idNumber"]) > span {
+  box-shadow: inset 4px 0 0 var(--crm-accent);
+}
+
+.inline-inputs label:has(input[name="coNumber"]) small,
+.inline-inputs label:has(input[name="idNumber"]) small {
   color: #0f766e;
   font-weight: 900;
 }
 
-.inline-inputs label:has(input[name="coNumber"]) small {
-  color: #0f766e;
-  font-weight: 900;
-}
-
-.profile-field input.highlight-conumber,
-.inline-inputs input.highlight-conumber {
-  border-color: #2dd4bf !important;
-  background: #e6fffb !important;
-  color: #0f766e !important;
-  box-shadow: inset 5px 0 0 #14b8a6 !important;
+.profile-field input.highlight-contract-id,
+.inline-inputs input.highlight-contract-id {
+  border-color: #7dd3fc !important;
+  background: #f0f9ff !important;
+  color: #18415f !important;
+  box-shadow: inset 5px 0 0 #0ea5e9 !important;
 }
 
 .profile-field select {
@@ -1092,9 +1190,13 @@ body[data-venue="taichung"] .record-card.active .record-id {
 
 .profile-field textarea {
   line-height: 1.45;
+  min-height: 64px;
+  overflow: hidden;
   padding-top: 8px;
   padding-bottom: 8px;
   resize: vertical;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .profile-field input:hover,
@@ -1124,16 +1226,18 @@ body[data-venue="taichung"] .record-card.active .record-id {
   user-select: text;
 }
 
-.profile-form.readonly input[name="coNumber"] {
-  color: #0f766e;
+.profile-form.readonly input[name="coNumber"],
+.profile-form.readonly input[name="idNumber"] {
+  color: #18415f;
+  font-size: 18px;
   font-weight: 900;
 }
 
-.profile-form.readonly input.highlight-conumber {
-  border-color: #2dd4bf !important;
-  background: #e6fffb !important;
-  color: #0f766e !important;
-  box-shadow: inset 5px 0 0 #14b8a6 !important;
+.profile-form.readonly input.highlight-contract-id {
+  border-color: #7dd3fc !important;
+  background: #f0f9ff !important;
+  color: #18415f !important;
+  box-shadow: inset 5px 0 0 #0ea5e9 !important;
 }
 
 .profile-form.readonly select {

@@ -3,44 +3,66 @@ const paymentBridgeStorageKey = "hj-crm-payment-bridge-v1";
 const legacyYearStorageKey = "hj-crm-clean-v2-year-data";
 const initialYear = "2026";
 
-const profileColumns = {
-  left: [
-    ["name", "姓名"],
-    ["company", "公司名稱"],
-    ["category", "類別"],
-    ["item", "項目"],
-    ["cycle", "繳費方式"],
-    ["birthday", "生日"],
-    ["address", "地址"],
-    ["industry", "行業備註"],
-    ["notes", "備註"],
-  ],
-  right: [
-    [
-      "idGroup",
-      "編號 / 統編",
-      [
-        ["id", "編號"],
-        ["coNumber", "統編"],
-      ],
-      "inline",
+const profileSections = [
+  {
+    side: "left",
+    tone: "contract",
+    title: "合約乙方資料",
+    hint: "對應合約第 2 頁",
+    fields: [
+      ["company", "承租人公司名稱"],
+      ["name", "負責人"],
+      ["address", "地址"],
+      ["idNumber", "身分證統一編號"],
+      ["coNumber", "公司統一編號"],
+      ["phone", "聯絡電話"],
+      ["birthday", "出生"],
     ],
-    [
-      "contractDates",
-      "合約日期",
-      [
-        ["start", "合約起始日期"],
-        ["end", "合約到期日"],
-      ],
+  },
+  {
+    side: "left",
+    tone: "note",
+    title: "內部備註",
+    hint: "不混進合約乙方資料",
+    fields: [
+      ["industry", "行業備註"],
+      ["notes", "備註"],
     ],
-    ["amount", "金額"],
-    ["pricePlan", "階段金額"],
-    ["deposit", "押金"],
-    ["phone", "聯絡電話"],
-    ["signedAt", "簽約日期"],
-    ["payDay", "約定繳費日期"],
-  ],
-};
+  },
+  {
+    side: "right",
+    tone: "management",
+    title: "合約管理",
+    hint: "內部管理資料",
+    fields: [
+      ["id", "編號"],
+      ["category", "類別"],
+      ["item", "項目"],
+      [
+        "contractDates",
+        "合約日期",
+        [
+          ["start", "合約起始日期"],
+          ["end", "合約到期日"],
+        ],
+      ],
+      ["signedAt", "簽約日期"],
+    ],
+  },
+  {
+    side: "right",
+    tone: "payment",
+    title: "收款資料",
+    hint: "付款與押金",
+    fields: [
+      ["cycle", "繳費方式"],
+      ["amount", "金額"],
+      ["pricePlan", "階段金額"],
+      ["deposit", "押金"],
+      ["payDay", "約定繳費日期"],
+    ],
+  },
+];
 
 const cycleOptions = ["M", "3M", "6M", "Y", "2Y", "3Y"];
 const categoryOptions = ["行號", "有限公司", "股份有限公司", "Ａ辦", "Ｂ辦", "Ｃ辦", "Ｄ辦", "Ｅ辦", "Ｆ辦"];
@@ -437,6 +459,7 @@ function createBlankRow() {
     pricePlan: "",
     deposit: "",
     coNumber: "",
+    idNumber: "",
     phone: "",
     signedAt: "",
     birthday: "",
@@ -495,6 +518,7 @@ function buildPaymentBridgeData() {
           amount: row.amount,
           pricePlan: row.pricePlan,
           coNumber: row.coNumber,
+          idNumber: row.idNumber,
         }));
     });
     venues[venue] = { activeYear: venueData.activeYear, years };
@@ -959,6 +983,12 @@ function renderMetrics(row) {
 
 function createTextControl(key, label, row) {
   const placeholder = placeholderForField(key);
+  if (key === "address") {
+    return `
+      <span>${escapeHtml(label)}</span>
+      <textarea name="${escapeHtml(key)}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""} autocomplete="off">${escapeHtml(row[key] || "")}</textarea>
+    `;
+  }
   return `
     <span>${escapeHtml(label)}</span>
     <input name="${escapeHtml(key)}" value="${escapeHtml(row[key] || "")}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""} autocomplete="off" />
@@ -969,6 +999,8 @@ function placeholderForField(key) {
   if (["start", "end"].includes(key)) return "115/05/05";
   if (key === "amount") return "1800/m";
   if (key === "deposit") return "6000/未退";
+  if (key === "coNumber") return "例：12345678";
+  if (key === "idNumber") return "例：A123456789";
   return "";
 }
 
@@ -992,6 +1024,7 @@ function renderProfileForm(row) {
   const editing = isEditing();
   profileForm.classList.toggle("editing", editing);
   profileForm.classList.toggle("readonly", !editing);
+  const contractIdentityFields = new Set(["coNumber", "idNumber"]);
   const bindControl = (control) => {
     const isDerived = control.dataset.derived === "true";
     if (control.tagName === "SELECT") {
@@ -1003,9 +1036,10 @@ function renderProfileForm(row) {
     if (isDerived) return;
     const updateDraft = () => {
       if (!isEditing()) return;
+      if (control.tagName === "TEXTAREA") resizeProfileTextarea(control);
       draftRow[control.name] = control.value;
-      if (control.name === "coNumber") {
-        control.classList.toggle("highlight-conumber", Boolean(control.value.trim()));
+      if (contractIdentityFields.has(control.name)) {
+        control.classList.toggle("highlight-contract-id", Boolean(control.value.trim()));
       }
       syncContractFields(control.name);
       syncVisibleContractControls();
@@ -1016,50 +1050,76 @@ function renderProfileForm(row) {
     control.addEventListener("input", updateDraft);
     control.addEventListener("change", updateDraft);
   };
+  const resizeProfileTextarea = (textarea) => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.max(textarea.scrollHeight, 64)}px`;
+  };
   const markSpecialValues = (field) => {
-    field.querySelectorAll('input[name="coNumber"]').forEach((input) => {
-      input.classList.toggle("highlight-conumber", Boolean(input.value.trim()));
+    field.querySelectorAll('input[name="coNumber"], input[name="idNumber"]').forEach((input) => {
+      input.classList.toggle("highlight-contract-id", Boolean(input.value.trim()));
     });
   };
 
-  Object.entries(profileColumns).forEach(([side, fields]) => {
+  const sectionsBySide = profileSections.reduce(
+    (acc, section) => {
+      acc[section.side].push(section);
+      return acc;
+    },
+    { left: [], right: [] }
+  );
+
+  Object.entries(sectionsBySide).forEach(([side, sections]) => {
     const column = document.createElement("div");
     column.className = `profile-column ${side}`;
-    fields.forEach((fieldConfig) => {
-      const [key, label, nestedFields, groupMode] = fieldConfig;
-      const field = document.createElement("label");
-      field.className = `profile-field${nestedFields ? (groupMode === "inline" ? " inline-field" : " date-field") : ""}`;
-      if (nestedFields) {
-        field.innerHTML = `
-          <span>${escapeHtml(label)}</span>
-          <div class="${groupMode === "inline" ? "inline-inputs" : "date-inputs"}">
-            ${nestedFields
-              .map(([nestedKey, nestedLabel]) => `
-                <label>
-                  <small>${escapeHtml(nestedLabel)}</small>
-                  <input name="${escapeHtml(nestedKey)}" value="${escapeHtml(row[nestedKey] || "")}"${placeholderForField(nestedKey) ? ` placeholder="${escapeHtml(placeholderForField(nestedKey))}"` : ""} autocomplete="off" />
-                </label>
-              `)
-              .join("")}
-          </div>
-        `;
-      } else if (key === "cycle") {
-        field.innerHTML = createSelectControl(key, label, row, cycleOptions);
-      } else if (key === "category") {
-        field.innerHTML = createSelectControl(key, label, row, categoryOptions);
-      } else if (key === "item") {
-        field.innerHTML = createSelectControl(key, label, row, itemOptions);
-      } else if (key === "contractTerm") {
-        field.innerHTML = `
-          <span>${escapeHtml(label)}</span>
-          <input name="${escapeHtml(key)}" value="${escapeHtml(getDisplayContractTerm(row))}" autocomplete="off" data-derived="true" />
-        `;
-      } else {
-        field.innerHTML = createTextControl(key, label, row);
-      }
-      field.querySelectorAll("input, select").forEach(bindControl);
-      markSpecialValues(field);
-      column.append(field);
+    sections.forEach((section) => {
+      const sectionEl = document.createElement("section");
+      sectionEl.className = `profile-section profile-section-${section.tone}`;
+      sectionEl.innerHTML = `
+        <div class="profile-section-head">
+          <strong>${escapeHtml(section.title)}</strong>
+          <small>${escapeHtml(section.hint)}</small>
+        </div>
+      `;
+      section.fields.forEach((fieldConfig) => {
+        const [key, label, nestedFields, groupMode] = fieldConfig;
+        const field = document.createElement("label");
+        field.className = `profile-field${nestedFields ? (groupMode === "inline" ? " inline-field" : " date-field") : ""}`;
+        if (nestedFields) {
+          field.innerHTML = `
+            <span>${escapeHtml(label)}</span>
+            <div class="${groupMode === "inline" ? "inline-inputs" : "date-inputs"}">
+              ${nestedFields
+                .map(([nestedKey, nestedLabel]) => `
+                  <label>
+                    <small>${escapeHtml(nestedLabel)}</small>
+                    <input name="${escapeHtml(nestedKey)}" value="${escapeHtml(row[nestedKey] || "")}"${placeholderForField(nestedKey) ? ` placeholder="${escapeHtml(placeholderForField(nestedKey))}"` : ""} autocomplete="off" />
+                  </label>
+                `)
+                .join("")}
+            </div>
+          `;
+        } else if (key === "cycle") {
+          field.innerHTML = createSelectControl(key, label, row, cycleOptions);
+        } else if (key === "category") {
+          field.innerHTML = createSelectControl(key, label, row, categoryOptions);
+        } else if (key === "item") {
+          field.innerHTML = createSelectControl(key, label, row, itemOptions);
+        } else if (key === "contractTerm") {
+          field.innerHTML = `
+            <span>${escapeHtml(label)}</span>
+            <input name="${escapeHtml(key)}" value="${escapeHtml(getDisplayContractTerm(row))}" autocomplete="off" data-derived="true" />
+          `;
+        } else {
+          field.innerHTML = createTextControl(key, label, row);
+        }
+        field.querySelectorAll("input, select, textarea").forEach((control) => {
+          bindControl(control);
+          if (control.tagName === "TEXTAREA") resizeProfileTextarea(control);
+        });
+        markSpecialValues(field);
+        sectionEl.append(field);
+      });
+      column.append(sectionEl);
     });
     profileForm.append(column);
   });
