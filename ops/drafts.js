@@ -194,14 +194,21 @@ function saveNoticeLog() {
 function loadDraftMessageEdits() {
   try {
     const saved = JSON.parse(localStorage.getItem(DRAFT_EDIT_STORAGE_KEY) || "{}");
-    return saved && typeof saved === "object" ? saved : {};
+    if (!saved || typeof saved !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(saved).filter(([, value]) => String(value || "").trim()),
+    );
   } catch {
     return {};
   }
 }
 
 function saveDraftMessageEdits() {
-  localStorage.setItem(DRAFT_EDIT_STORAGE_KEY, JSON.stringify(draftMessageEdits));
+  const cleaned = Object.fromEntries(
+    Object.entries(draftMessageEdits).filter(([, value]) => String(value || "").trim()),
+  );
+  draftMessageEdits = cleaned;
+  localStorage.setItem(DRAFT_EDIT_STORAGE_KEY, JSON.stringify(cleaned));
 }
 
 function draftMessageKey(id, index) {
@@ -229,7 +236,7 @@ function updateDraftMessage(id, index, value) {
   const numericIndex = Number(index);
   const key = draftMessageKey(id, numericIndex);
   const original = originalDraftMessageBody(item, numericIndex);
-  if (value === original) {
+  if (!String(value || "").trim() || value === original) {
     delete draftMessageEdits[key];
   } else {
     draftMessageEdits[key] = value;
