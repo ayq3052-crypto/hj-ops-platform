@@ -815,6 +815,10 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   top: 50%;
 }
 
+.new-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.taichung-stamp {
+  top: 50%;
+}
+
 .renewal-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.huanrui-stamp {
   top: 47%;
 }
@@ -1618,6 +1622,10 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   }
 
   body.contract-body.is-printing-contract .contract-print-root .blank-template-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.taichung-stamp {
+    top: 50%;
+  }
+
+  body.contract-body.is-printing-contract .contract-print-root .new-contract.registration-contract .html-contract-page:nth-child(2) .official-stamp-area.taichung-stamp {
     top: 50%;
   }
 
