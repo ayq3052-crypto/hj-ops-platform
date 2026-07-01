@@ -907,6 +907,11 @@ function manualDraftLooksLikePayment(item) {
   });
 }
 
+function manualDraftHasBlankBody(item) {
+  const messages = item?.messages || [];
+  return !messages.length || messages.some((message) => !String(message?.body || "").trim());
+}
+
 function normalizeManualDraftItem(item) {
   const normalizedRefs = (item.paymentRefs || []).map((ref) => ({ ...ref, year: Number(ref.year || item.year || initialPaymentYear) }));
   const normalized = {
@@ -920,8 +925,9 @@ function normalizeManualDraftItem(item) {
   if (!row) return normalized;
   const rowIsRenewal = isContractConfirmationRow(row, ref.year, ref.month);
   const normalizedIsRenewal = String(normalized.kind || "").includes("續約");
-  if (!rowIsRenewal && !normalizedIsRenewal && !manualDraftLooksLikePayment(normalized)) return normalized;
-  if (!rowIsRenewal && normalizedIsRenewal) {
+  const normalizedHasBlankBody = manualDraftHasBlankBody(normalized);
+  if (!rowIsRenewal && !normalizedIsRenewal && !normalizedHasBlankBody && !manualDraftLooksLikePayment(normalized)) return normalized;
+  if (!rowIsRenewal && (normalizedIsRenewal || normalizedHasBlankBody)) {
     const paymentDraft = autoDraftForRow(row, ref.venue || normalized.venue, ref.month || normalized.month, ref.year || normalized.year);
     return paymentDraft
       ? {
