@@ -676,10 +676,6 @@
         return /^v/i.test(raw) ? raw.toUpperCase() : raw;
       }
 
-      function normalizeCycleValue(value) {
-        return normalizePaymentText(value).toUpperCase().replaceAll("Ｍ", "M").replaceAll("Ｙ", "Y");
-      }
-
       function parseFullRocDateParts(value) {
         const text = normalizePaymentText(value);
         const compactMatch = text.match(/^(\d{2,3})(\d{2})(\d{2})$/);
@@ -751,11 +747,11 @@
           `${notice.monthNumber}月`,
           notice.dateKey,
           normalizeCustomerId(row.id),
-          normalizePaymentText(row.company),
-          normalizePaymentText(row.name),
-          normalizeCycleValue(row.cycle),
-          normalizePaymentText(row.start),
-          normalizePaymentText(row.end),
+          row.company,
+          row.name,
+          row.cycle,
+          row.start,
+          row.end,
         ].join("|");
         let hash = 0;
         for (let index = 0; index < key.length; index += 1) {
