@@ -1120,7 +1120,7 @@ function clearPaymentSearch() {
 function renderMetrics() {
   document.querySelectorAll("[data-venue-summary]").forEach((summary) => {
     const venue = summary.dataset.venueSummary;
-    const month = venueActiveMonths[venue] || "6月";
+    const month = venueActiveMonths[venue] || defaultPaymentMonth;
     const year = activeYearForVenue(venue);
     const rows = venue === activeVenue && month === activeMonth && year === activeYear ? paymentRows : loadPaymentRows(venue, month, year);
     const counts = countRows(rows);
