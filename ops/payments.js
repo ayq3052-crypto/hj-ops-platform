@@ -28,6 +28,7 @@ const initialPaymentYear = 2026;
 const paymentYearStateKey = "hjPaymentYearStateV1";
 const currentGregorianYear = String(new Date().getFullYear());
 const monthLabels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+const defaultPaymentMonth = currentPaymentMonthLabel();
 const contractConfirmationNote = "合約到期，先確認續約";
 const yearGeneratingPaintDelayMs = 900;
 const minimumYearGeneratingMs = 3000;
@@ -45,14 +46,14 @@ const paymentData = {
 const sectionOrder = ["年繳 / 2Y", "辦公室", "營登", "自由座"];
 
 const venueActiveMonths = {
-  taichung: "6月",
-  huanrui: "6月",
+  taichung: defaultPaymentMonth,
+  huanrui: defaultPaymentMonth,
 };
 
 let paymentYearState = readPaymentYearState();
 let activeVenue = "taichung";
 let activeYear = Number(paymentYearState.activeYear || paymentYearState.activeYears[activeVenue] || initialPaymentYear);
-let activeMonth = "6月";
+let activeMonth = defaultPaymentMonth;
 let activeFilter = "all";
 let searchTerm = "";
 let selectedRowIndex = null;
@@ -87,6 +88,15 @@ const yearActionState = document.querySelector("#yearActionState");
 
 function getValue(selector) {
   return document.querySelector(selector)?.value.trim() || "";
+}
+
+function currentPaymentMonthLabel() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    month: "numeric",
+  }).formatToParts(new Date());
+  const month = Number(parts.find((part) => part.type === "month")?.value);
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? `${month}月` : "6月";
 }
 
 function normalizeYear(value) {
@@ -2507,7 +2517,7 @@ function renderMonthTabs() {
     if (heading) heading.textContent = `${year} 年客戶繳費`;
     toolbar.classList.toggle("selected-venue", isSelected);
     toolbar.classList.toggle("collapsed-venue", !isSelected);
-    toolbar.dataset.activeMonth = venueActiveMonths[venue] || "6月";
+    toolbar.dataset.activeMonth = venueActiveMonths[venue] || defaultPaymentMonth;
     toolbar.setAttribute("aria-expanded", String(isSelected));
     toolbar.tabIndex = isSelected ? -1 : 0;
     toolbar.title = isSelected ? "" : `切換到${venueLabels[venue] || ""}`;
@@ -2575,7 +2585,7 @@ function bindEvents() {
     const switchVenue = () => {
       const venue = toolbar.dataset.venueToolbar;
       if (!venue || venue === activeVenue) return;
-      switchSheet(venue, venueActiveMonths[venue] || "6月");
+      switchSheet(venue, venueActiveMonths[venue] || defaultPaymentMonth);
     };
     toolbar.addEventListener("click", (event) => {
       if (event.target.closest(".month-tab")) return;
