@@ -2,7 +2,7 @@
   const pageScripts = {
     crm: ["./app.js?v=20260701-crm-profile-layout-2"],
     contracts: ["./contracts.js?v=20260701-contract-edit-no-autofocus-1"],
-    payments: ["./ops/payments.js?v=20260702-current-month-1"],
+    payments: ["./ops/payments.js?v=20260702-cycle-regenerate-1"],
     drafts: ["./ops/drafts.js?v=20260701-drafts-typeguard-1"],
   };
 

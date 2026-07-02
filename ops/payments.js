@@ -1353,7 +1353,7 @@ async function smartFillRenewalFromCrm() {
 
     nextRow._rowKey = currentRow._rowKey || makeManualRowKey();
     paymentRows[selectedRowIndex] = nextRow;
-    const generation = generateFuturePaymentsForAddedCustomer(nextRow, activeVenue, activeMonth, activeYear, { sourceKind: "manual" });
+    const generation = regenerateFuturePaymentsForRow(nextRow, activeVenue, activeMonth, activeYear, { sourceKind: "manual" });
     paymentRows = normalizeSectionGroups(paymentRows);
     selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === nextRow._rowKey);
     rowBasicsOpen = false;
@@ -1933,6 +1933,14 @@ function generateFuturePaymentsForAddedCustomer(
   return { created, nextDate: firstNextDate, stoppedForContract };
 }
 
+function regenerateFuturePaymentsForRow(row, venue = activeVenue, sourceMonth = activeMonth, sourceYear = activeYear, options = {}) {
+  const restoredSuppressionCount = removeFutureGeneratedSuppressionsFor(row, venue, sourceMonth, sourceYear);
+  return {
+    ...generateFuturePaymentsForAddedCustomer(row, venue, sourceMonth, sourceYear, options),
+    restoredSuppressionCount,
+  };
+}
+
 function normalizeComparableDate(value) {
   return normalizeAscii(value)
     .trim()
@@ -2043,12 +2051,27 @@ function addCustomerToCurrentMonth() {
     note: getValue("#newCustomerNote") || (isExistingCustomer ? "新循環" : "新辦"),
   };
 
-  if (paymentRows.some((row) => sameCustomerPeriod(row, newRow))) {
-    showToast(`${id} 這個期間已在 ${activeMonth}`);
+  const duplicateIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, newRow));
+  if (duplicateIndex >= 0) {
+    const existingRow = paymentRows[duplicateIndex];
+    const generation = regenerateFuturePaymentsForRow(existingRow);
+    savePaymentRows();
+    renderAll();
+
+    let toast = `${id} 這個期間已在 ${activeMonth}`;
+    if (generation.created) {
+      toast += `，已補帶入 ${generation.created} 個後續月份`;
+    } else if (generation.restoredSuppressionCount) {
+      toast += "，已解除舊刪除記號";
+    }
+    if (generation.stoppedForContract) {
+      toast += "，到期前先確認續約";
+    }
+    showToast(toast);
     return;
   }
 
-  const generation = generateFuturePaymentsForAddedCustomer(newRow);
+  const generation = regenerateFuturePaymentsForRow(newRow);
   const hasSameId = paymentRows.some((row) => row.id === id);
   paymentRows.push(newRow);
   paymentRows = normalizeSectionGroups(paymentRows);
