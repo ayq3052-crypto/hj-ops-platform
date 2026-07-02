@@ -42,9 +42,11 @@ const profileSections = [
         "contractDates",
         "合約日期",
         [
+          ["contractYears", "年數"],
           ["start", "合約起始日期"],
           ["end", "合約到期日"],
         ],
+        "contract",
       ],
       ["signedAt", "簽約日期"],
     ],
@@ -67,6 +69,7 @@ const profileSections = [
 const cycleOptions = ["M", "3M", "6M", "Y", "2Y", "3Y"];
 const categoryOptions = ["行號", "有限公司", "股份有限公司", "Ａ辦", "Ｂ辦", "Ｃ辦", "Ｄ辦", "Ｅ辦", "Ｆ辦"];
 const itemOptions = ["營登", "辦公室", "自由座", "代收信件", "事務所"];
+const crmDateFields = new Set(["birthday", "start", "end", "signedAt"]);
 
 const appTitle = document.querySelector("#appTitle");
 const venueKicker = document.querySelector("#venueKicker");
@@ -231,6 +234,7 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     cycle: normalizeCycleValue(row?.cycle || ""),
     start: String(row?.start || "").trim(),
     end: String(row?.end || "").trim(),
+    contractYears: "",
     contractTerm: "",
     payDay: String(row?.payDay || "").trim(),
     amount: String(row?.amount || "").trim(),
@@ -251,6 +255,7 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     folder: row?.folder || fallbackFolder,
     venue,
   };
+  normalized.contractYears = normalizeContractYears(row?.contractYears) || String(getContractYearDiff(normalized.start, normalized.end) || getYearsFromContractTerm(row?.contractTerm) || "");
   normalized.contractTerm = inferContractTermFromDates(normalized.start, normalized.end) || normalizeContractTermValue(row?.contractTerm);
   normalized.uid = row?.uid || `${venue}-${normalized.folder}-${String(index + 1).padStart(3, "0")}-${normalized.id || "no-id"}`;
   return normalized;
@@ -453,6 +458,7 @@ function createBlankRow() {
     cycle: "",
     start: "",
     end: "",
+    contractYears: "",
     contractTerm: "",
     payDay: "",
     amount: "",
@@ -565,17 +571,47 @@ function getNextCreatableYear() {
 }
 
 function parseRocDate(value) {
-  const match = String(value || "").match(/^(\d{2,4})\/(\d{1,2})\/(\d{1,2})$/);
-  if (!match) return null;
-  return {
-    rocYear: Number(match[1]),
-    month: match[2].padStart(2, "0"),
-    day: match[3].padStart(2, "0"),
+  const text = String(value || "").trim();
+  const buildDate = (rocYear, month, day) => {
+    const normalized = {
+      rocYear: Number(rocYear),
+      month: String(month).padStart(2, "0"),
+      day: String(day).padStart(2, "0"),
+    };
+    const monthNumber = Number(normalized.month);
+    const dayNumber = Number(normalized.day);
+    if (!normalized.rocYear || monthNumber < 1 || monthNumber > 12 || dayNumber < 1 || dayNumber > 31) return null;
+    return normalized;
   };
+  const digitOnly = text.replace(/\s/g, "");
+  if (/^\d+$/.test(digitOnly)) {
+    if (digitOnly.length === 7) return buildDate(digitOnly.slice(0, 3), digitOnly.slice(3, 5), digitOnly.slice(5, 7));
+    if (digitOnly.length === 6) {
+      const firstThreeYear = Number(digitOnly.slice(0, 3));
+      if (firstThreeYear >= 100 && firstThreeYear <= 150) {
+        return buildDate(digitOnly.slice(0, 3), digitOnly.slice(3, 4), digitOnly.slice(4, 6));
+      }
+      return buildDate(digitOnly.slice(0, 2), digitOnly.slice(2, 4), digitOnly.slice(4, 6));
+    }
+    if (digitOnly.length === 5) return buildDate(digitOnly.slice(0, 2), digitOnly.slice(2, 3), digitOnly.slice(3, 5));
+  }
+  const match = text.match(/^(\d{2,4})\D+(\d{1,4})(?:\D+(\d{1,2}))?$/);
+  if (!match) return null;
+  const compactMonthDay = !match[3] && match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  return buildDate(
+    match[1],
+    compactMonthDay ? compactMonthDay.slice(0, -2) : match[2],
+    compactMonthDay ? compactMonthDay.slice(-2) : match[3] || 1,
+  );
 }
 
 function formatRocDate(date) {
   return `${date.rocYear}/${date.month}/${date.day}`;
+}
+
+function normalizeSlashRocDate(value) {
+  const parsed = parseRocDate(value);
+  return parsed ? formatRocDate(parsed) : String(value || "").trim();
 }
 
 function shiftRocDate(value, yearDelta) {
@@ -590,6 +626,8 @@ function rocToGregorianYear(value) {
 }
 
 function getContractYears(row) {
+  const explicitYears = contractYearsNumber(row.contractYears);
+  if (explicitYears) return explicitYears;
   const inferredYears = getContractYearDiff(row.start, row.end);
   if (inferredYears) return inferredYears;
   const text = `${row.contractTerm || ""} ${row.cycle || ""}`.toLowerCase();
@@ -598,6 +636,20 @@ function getContractYears(row) {
   const termYears = getYearsFromContractTerm(row.contractTerm);
   if (termYears) return termYears;
   return 1;
+}
+
+function normalizeContractYears(value) {
+  const match = String(value || "").trim().match(/\d+(?:\.\d+)?/);
+  if (!match) return "";
+  const number = Number(match[0]);
+  if (!Number.isFinite(number) || number <= 0) return "";
+  return Number.isInteger(number) ? String(number) : String(number);
+}
+
+function contractYearsNumber(value) {
+  const normalized = normalizeContractYears(value);
+  const number = Number(normalized);
+  return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
 function getYearsFromContractTerm(term) {
@@ -635,8 +687,17 @@ function inferContractTermFromDates(start, end) {
 }
 
 function getDisplayContractTerm(row) {
+  const explicitYears = contractYearsNumber(row.contractYears);
+  if (explicitYears && Number.isInteger(explicitYears)) return formatContractTermYears(explicitYears);
   if (row.start && row.end) return inferContractTermFromDates(row.start, row.end) || "自訂期間";
   return normalizeContractTermValue(row.contractTerm) || row.contractTerm || "";
+}
+
+function calculateEndDateFromStartAndYears(start, yearsValue) {
+  const parsed = parseRocDate(start);
+  const years = contractYearsNumber(yearsValue);
+  if (!parsed || !Number.isInteger(years)) return "";
+  return formatRocDate({ ...parsed, rocYear: parsed.rocYear + years });
 }
 
 function getComparableRocDate(value) {
@@ -654,13 +715,24 @@ function getContractDateIssue(row) {
 
 function syncContractFields(changedName) {
   if (!draftRow) return;
-  if (changedName === "end" || changedName === "start") {
+  if (changedName === "contractYears") {
+    draftRow.contractYears = normalizeContractYears(draftRow.contractYears);
+  }
+  if (changedName === "start" || changedName === "contractYears") {
+    const autoEnd = calculateEndDateFromStartAndYears(draftRow.start, draftRow.contractYears);
+    if (autoEnd) draftRow.end = autoEnd;
+  }
+  if (changedName === "end") {
+    const inferredYears = getContractYearDiff(draftRow.start, draftRow.end);
+    if (inferredYears) draftRow.contractYears = String(inferredYears);
+  }
+  if (["start", "end", "contractYears"].includes(changedName)) {
     draftRow.contractTerm = getDisplayContractTerm(draftRow);
   }
 }
 
 function syncVisibleContractControls() {
-  ["contractTerm", "start", "end"].forEach((name) => {
+  ["contractYears", "contractTerm", "start", "end"].forEach((name) => {
     const control = profileForm.querySelector(`[name="${name}"]`);
     if (!control) return;
     control.value = name === "contractTerm" ? getDisplayContractTerm(draftRow || {}) : draftRow?.[name] || "";
@@ -996,6 +1068,7 @@ function createTextControl(key, label, row) {
 }
 
 function placeholderForField(key) {
+  if (key === "contractYears") return "例：1";
   if (["start", "end"].includes(key)) return "115/05/05";
   if (key === "amount") return "1800/m";
   if (key === "deposit") return "6000/未退";
@@ -1044,11 +1117,18 @@ function renderProfileForm(row) {
       syncContractFields(control.name);
       syncVisibleContractControls();
       if (control.name === "company") detailCompany.textContent = control.value || "新增客戶";
-      if (["item", "cycle", "start", "end", "amount", "pricePlan"].includes(control.name)) renderMetrics(draftRow);
+      if (["item", "cycle", "start", "end", "contractYears", "amount", "pricePlan"].includes(control.name)) renderMetrics(draftRow);
       setDraftStatus();
     };
     control.addEventListener("input", updateDraft);
     control.addEventListener("change", updateDraft);
+    control.addEventListener("blur", () => {
+      if (!isEditing() || !crmDateFields.has(control.name)) return;
+      const formatted = normalizeSlashRocDate(control.value);
+      if (!formatted || formatted === control.value) return;
+      control.value = formatted;
+      updateDraft();
+    });
   };
   const resizeProfileTextarea = (textarea) => {
     textarea.style.height = "auto";
@@ -1083,11 +1163,18 @@ function renderProfileForm(row) {
       section.fields.forEach((fieldConfig) => {
         const [key, label, nestedFields, groupMode] = fieldConfig;
         const field = document.createElement("label");
-        field.className = `profile-field${nestedFields ? (groupMode === "inline" ? " inline-field" : " date-field") : ""}`;
+        field.className = [
+          "profile-field",
+          nestedFields ? (groupMode === "inline" ? "inline-field" : "date-field") : "",
+          groupMode === "contract" ? "compact-date-field" : "",
+        ].filter(Boolean).join(" ");
         if (nestedFields) {
           field.innerHTML = `
             <span>${escapeHtml(label)}</span>
-            <div class="${groupMode === "inline" ? "inline-inputs" : "date-inputs"}">
+            <div class="${[
+              groupMode === "inline" ? "inline-inputs" : "date-inputs",
+              groupMode === "contract" ? "contract-date-inputs" : "",
+            ].filter(Boolean).join(" ")}">
               ${nestedFields
                 .map(([nestedKey, nestedLabel]) => `
                   <label>

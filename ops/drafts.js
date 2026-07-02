@@ -488,19 +488,21 @@ function monthInfoForAbsoluteIndex(absoluteIndex) {
 }
 
 function minguoMonthIndexForRocDate(value) {
-  const match = normalizePaymentValue(value).match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,2})/);
+  const match = normalizePaymentValue(value).match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,4})/);
   if (!match) return null;
   const rocYear = Number(match[1]);
-  const monthNumber = Number(match[2]);
+  const compactMonthDay = match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  const monthNumber = Number(compactMonthDay ? compactMonthDay.slice(0, -2) : match[2]);
   if (!rocYear || monthNumber < 1 || monthNumber > 12) return null;
   return (rocYear + 1911) * 12 + (monthNumber - 1);
 }
 
 function addYearsToRocDateIndex(value, years) {
-  const match = normalizePaymentValue(value).match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,2})/);
+  const match = normalizePaymentValue(value).match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,4})/);
   if (!match || !Number.isInteger(years)) return null;
   const rocYear = Number(match[1]);
-  const monthNumber = Number(match[2]);
+  const compactMonthDay = match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  const monthNumber = Number(compactMonthDay ? compactMonthDay.slice(0, -2) : match[2]);
   if (!rocYear || monthNumber < 1 || monthNumber > 12) return null;
   return (rocYear + 1911 + years) * 12 + (monthNumber - 1);
 }
@@ -707,19 +709,39 @@ function bankTextFor(venue) {
 }
 
 function parseRocDateParts(value) {
-  const match = String(value || "").trim().match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,2})(?:\s*[\\/.-]\s*(\d{1,2}))?/);
+  const match = String(value || "").trim().match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,4})(?:\s*[\\/.-]\s*(\d{1,2}))?/);
   if (!match) return null;
-  const month = Number(match[2]);
-  const day = Number(match[3] || 1);
+  const compactMonthDay = !match[3] && match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  const month = Number(compactMonthDay ? compactMonthDay.slice(0, -2) : match[2]);
+  const day = Number(compactMonthDay ? compactMonthDay.slice(-2) : match[3] || 1);
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
   return { month, day };
 }
 
+function parseFullRocDateParts(value) {
+  const match = normalizePaymentValue(value).match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,4})(?:\s*[\\/.-]\s*(\d{1,2}))?/);
+  if (!match) return null;
+  const rawYear = Number(match[1]);
+  const compactMonthDay = !match[3] && match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  const monthNumber = Number(compactMonthDay ? compactMonthDay.slice(0, -2) : match[2]);
+  const day = Number(compactMonthDay ? compactMonthDay.slice(-2) : match[3] || 1);
+  if (!rawYear || monthNumber < 1 || monthNumber > 12 || day < 1 || day > 31) return null;
+  const westernYear = rawYear > 1911 ? rawYear : rawYear + 1911;
+  const safeDay = Math.min(day, daysInMonth(westernYear, monthNumber));
+  return {
+    rocYear: westernYear - 1911,
+    westernYear,
+    monthNumber,
+    day: safeDay,
+  };
+}
+
 function parseRocMonthIndex(value) {
-  const match = String(value || "").trim().match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,2})/);
+  const match = String(value || "").trim().match(/(\d{2,4})\s*[\\/.-]\s*(\d{1,4})/);
   if (!match) return null;
   const rocYear = Number(match[1]);
-  const monthNumber = Number(match[2]);
+  const compactMonthDay = match[2].length >= 3 ? match[2].padStart(4, "0") : "";
+  const monthNumber = Number(compactMonthDay ? compactMonthDay.slice(0, -2) : match[2]);
   if (!rocYear || monthNumber < 1 || monthNumber > 12) return null;
   return (rocYear + 1911) * 12 + (monthNumber - 1);
 }
@@ -735,12 +757,44 @@ function formatWesternDate(year, monthNumber, day) {
   return `${year}-${String(monthNumber).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function formatMonthDay(monthNumber, day) {
+  return `${String(monthNumber).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+}
+
+function daysInMonth(year, monthNumber) {
+  return new Date(year, monthNumber, 0).getDate();
+}
+
 function addMonths(year, monthNumber, months) {
   const absolute = year * 12 + (monthNumber - 1) + months;
   return {
     year: Math.floor(absolute / 12),
     monthNumber: (absolute % 12) + 1,
   };
+}
+
+function addCalendarMonthsClamped(year, monthNumber, day, months) {
+  const target = addMonths(year, monthNumber, months);
+  return {
+    ...target,
+    day: Math.min(day, daysInMonth(target.year, target.monthNumber)),
+  };
+}
+
+function shiftDateParts(year, monthNumber, day, days) {
+  const date = new Date(Date.UTC(year, monthNumber - 1, day + days));
+  return {
+    year: date.getUTCFullYear(),
+    monthNumber: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  };
+}
+
+function previousWorkdayIfWeekend(dateParts) {
+  const dayOfWeek = new Date(Date.UTC(dateParts.year, dateParts.monthNumber - 1, dateParts.day)).getUTCDay();
+  if (dayOfWeek === 6) return shiftDateParts(dateParts.year, dateParts.monthNumber, dateParts.day, -1);
+  if (dayOfWeek === 0) return shiftDateParts(dateParts.year, dateParts.monthNumber, dateParts.day, -2);
+  return dateParts;
 }
 
 function billingPeriodFor(row, monthLabel, year) {
@@ -759,7 +813,24 @@ function billingPeriodFor(row, monthLabel, year) {
 function renewalDueFor(row) {
   const parts = parseRocDateParts(row?.end);
   if (!parts) return "";
-  return `${String(parts.month).padStart(2, "0")}/${String(parts.day).padStart(2, "0")}`;
+  return formatMonthDay(parts.month, parts.day);
+}
+
+function renewalNoticeFor(row) {
+  const end = parseFullRocDateParts(row?.end);
+  if (!end) return null;
+  const rawNotice = addCalendarMonthsClamped(end.westernYear, end.monthNumber, end.day, -1);
+  const notice = previousWorkdayIfWeekend(rawNotice);
+  return {
+    year: notice.year,
+    month: `${notice.monthNumber}月`,
+    monthNumber: notice.monthNumber,
+    day: notice.day,
+    dateKey: formatWesternDate(notice.year, notice.monthNumber, notice.day),
+    due: formatMonthDay(notice.monthNumber, notice.day),
+    contractDue: formatMonthDay(end.monthNumber, end.day),
+    contractDateKey: formatWesternDate(end.westernYear, end.monthNumber, end.day),
+  };
 }
 
 function draftStatusForRow(row, year, month) {
@@ -769,6 +840,13 @@ function draftStatusForRow(row, year, month) {
   return "today";
 }
 
+function draftStatusForDate(dateKey) {
+  const date = parseDateKey(dateKey);
+  const today = parseDateKey(todayKey());
+  if (!date || !today) return "today";
+  return date > today ? "upcoming" : "today";
+}
+
 function stableAutoDraftId(row, venue, month, year) {
   const key = [year, venue, month, normalizeCustomerId(row.id), row.section, row.cycle, row.start, row.end].join("|");
   let hash = 0;
@@ -776,6 +854,27 @@ function stableAutoDraftId(row, venue, month, year) {
     hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
   }
   return `auto-${year}-${venue}-${monthLabels.indexOf(month) + 1}-${normalizeCustomerId(row.id) || "noid"}-${hash.toString(36)}`;
+}
+
+function stableRenewalLeadDraftId(row, venue, notice) {
+  const key = [
+    "renewal-lead",
+    notice.year,
+    venue,
+    notice.month,
+    notice.dateKey,
+    normalizeCustomerId(row.id),
+    row.company,
+    row.name,
+    row.cycle,
+    row.start,
+    row.end,
+  ].join("|");
+  let hash = 0;
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+  }
+  return `renewal-${notice.year}-${venue}-${notice.monthNumber}-${normalizeCustomerId(row.id) || "noid"}-${hash.toString(36)}`;
 }
 
 function paymentMessageFor(row, venue, month, year) {
@@ -876,6 +975,44 @@ function autoDraftForRow(row, venue, month, year) {
       },
     ],
     autoGenerated: true,
+  };
+}
+
+function rowNeedsRenewalLeadDraft(row) {
+  if (!row || isClosingSection(row.section) || isNonBillableRow(row)) return false;
+  const note = String(row.note || "");
+  if (/不續約|不續|已遷出|已結束|已退款|已歇業|收尾/.test(note)) return false;
+  if (!normalizeCustomerId(row.id) && !row.company && !row.name) return false;
+  return Boolean(parseFullRocDateParts(row.end));
+}
+
+function renewalLeadDraftForRow(row, venue, sourceMonth, sourceYear) {
+  if (!rowNeedsRenewalLeadDraft(row)) return null;
+  const service = serviceKindFor(row);
+  if (service === "待確認") return null;
+  const notice = renewalNoticeFor(row);
+  if (!notice) return null;
+  const titleName = displayNameFor(row);
+  return {
+    id: stableRenewalLeadDraftId(row, venue, notice),
+    year: Number(notice.year),
+    venue,
+    month: notice.month,
+    status: draftStatusForDate(notice.dateKey),
+    paymentRefs: sourceMonth && sourceYear ? [{ venue, month: sourceMonth, year: Number(sourceYear), id: row.id }] : [],
+    kind: "續約",
+    title: `${row.id ? `${row.id} ` : ""}${titleName}`,
+    subtitle: `${notice.contractDue} 到期，提前一個月通知`,
+    due: notice.due,
+    amount: "續約確認",
+    messages: [
+      {
+        label: "續約確認",
+        body: renewalMessageFor(row, venue),
+      },
+    ],
+    autoGenerated: true,
+    renewalLead: true,
   };
 }
 
@@ -989,15 +1126,27 @@ function buildAutoDraftItems(year = activeYear) {
   );
   const generated = [];
   const generatedKeys = new Set();
+  const sourceYears = Array.from(new Set([Number(year), Number(year) + 1]));
   venueKeys.forEach((venue) => {
-    monthLabels.forEach((month) => {
-      paymentRowsFor(venue, month, year).forEach((row) => {
-        const item = autoDraftForRow(row, venue, month, year);
-        if (!item) return;
-        const key = autoDraftKey(item);
-        if (manualKeys.has(key) || generatedKeys.has(key)) return;
-        generatedKeys.add(key);
-        generated.push(item);
+    sourceYears.forEach((sourceYear) => {
+      monthLabels.forEach((month) => {
+        paymentRowsFor(venue, month, sourceYear).forEach((row) => {
+          if (Number(sourceYear) === Number(year)) {
+            const item = autoDraftForRow(row, venue, month, year);
+            if (item) {
+              const key = autoDraftKey(item);
+              if (!manualKeys.has(key) && !generatedKeys.has(key)) {
+                generatedKeys.add(key);
+                generated.push(item);
+              }
+            }
+          }
+          const renewalLead = renewalLeadDraftForRow(row, venue, month, sourceYear);
+          if (!renewalLead || Number(renewalLead.year) !== Number(year)) return;
+          if (generatedKeys.has(renewalLead.id)) return;
+          generatedKeys.add(renewalLead.id);
+          generated.push(renewalLead);
+        });
       });
     });
   });

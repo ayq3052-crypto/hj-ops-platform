@@ -267,6 +267,23 @@
         line-height: 1;
       }
 
+      a.draft-alert {
+        border-color: #d9a441;
+        background: #fff6df;
+        box-shadow: 0 12px 30px rgba(184, 121, 23, 0.08);
+      }
+
+      a.draft-alert:hover,
+      a.draft-alert:focus-visible {
+        border-color: #c8871a;
+        background: #fff3d2;
+        box-shadow: 0 16px 34px rgba(184, 121, 23, 0.12);
+      }
+
+      a.draft-alert .arrow {
+        background: #b87917;
+      }
+
       @media (max-width: 760px) {
         main {
           min-height: auto;
@@ -338,11 +355,11 @@
           <a href="./contracts.html?venue=taichung"><span class="name">合約書</span><span class="arrow">→</span></a>
           <a href="./crm.html?venue=taichung"><span class="name">CRM</span><span class="arrow">→</span></a>
           <a href="./payments.html"><span class="name">繳費表</span><span class="arrow">→</span></a>
-          <a href="./drafts.html"><span class="name">訊息草稿</span><span class="arrow">→</span></a>
+          <a href="./drafts.html" data-home-drafts-entry><span class="name">訊息草稿</span><span class="arrow">→</span></a>
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260629-contract-print-1"></script>
+    <script src="./db-client.js?v=20260702-home-draft-alert-1"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -366,7 +383,12 @@
       const lockButton = document.querySelector("#lockButton");
       const resetButton = document.querySelector("#resetButton");
       const loginNote = document.querySelector("#loginNote");
+      const draftsEntry = document.querySelector("[data-home-drafts-entry]");
+      const noticeStorageKey = "hjDraftNoticeLogV1";
+      const followUpDays = 6;
+      const msPerDay = 24 * 60 * 60 * 1000;
       let lockTimer = null;
+      let draftAlertTimer = null;
 
       const bytesToHex = (bytes) => [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
@@ -491,6 +513,7 @@
           accountInput.value = "";
           passwordInput.value = "";
           scheduleAutoLock();
+          refreshDraftEntryAlert();
         }
       };
 
@@ -620,9 +643,193 @@
       resetButton.addEventListener("click", resetEntrancePassword);
       window.addEventListener("storage", (event) => {
         if (event.key === unlockKey && !hasValidUnlock()) syncMode();
+        if (event.key === noticeStorageKey) refreshDraftEntryAlert();
       });
 
       syncMode();
+
+      function todayDateKey(date = new Date()) {
+        return date.toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
+      }
+
+      function dateFromKey(value) {
+        const parsed = new Date(`${value}T00:00:00+08:00`);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }
+
+      function daysSinceDateKey(dateKey) {
+        const start = dateFromKey(dateKey);
+        const today = dateFromKey(todayDateKey());
+        if (!start || !today) return null;
+        return Math.max(0, Math.floor((today - start) / msPerDay));
+      }
+
+      function normalizePaymentText(value) {
+        return String(value || "")
+          .replace(/[！-～]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+          .replaceAll("　", " ")
+          .trim();
+      }
+
+      function normalizeCustomerId(value) {
+        const raw = normalizePaymentText(value);
+        return /^v/i.test(raw) ? raw.toUpperCase() : raw;
+      }
+
+      function parseFullRocDateParts(value) {
+        const text = normalizePaymentText(value);
+        const compactMatch = text.match(/^(\d{2,3})(\d{2})(\d{2})$/);
+        const slashCompactMatch = text.match(/^(\d{2,3})[/.年-](\d{2})(\d{2})$/);
+        const regularMatch = text.match(/(\d{2,3})[/.年-](\d{1,2})[/.月-](\d{1,2})/);
+        const match = compactMatch || slashCompactMatch || regularMatch;
+        if (!match) return null;
+        const rocYear = Number(match[1]);
+        const monthNumber = Number(match[2]);
+        const day = Number(match[3]);
+        if (!Number.isInteger(rocYear) || !Number.isInteger(monthNumber) || !Number.isInteger(day)) return null;
+        if (monthNumber < 1 || monthNumber > 12 || day < 1 || day > 31) return null;
+        return { rocYear, westernYear: rocYear + 1911, monthNumber, day };
+      }
+
+      function daysInMonth(year, monthNumber) {
+        return new Date(year, monthNumber, 0).getDate();
+      }
+
+      function addMonths(year, monthNumber, months) {
+        const absolute = year * 12 + (monthNumber - 1) + months;
+        return {
+          year: Math.floor(absolute / 12),
+          monthNumber: (absolute % 12) + 1,
+        };
+      }
+
+      function addCalendarMonthsClamped(year, monthNumber, day, months) {
+        const target = addMonths(year, monthNumber, months);
+        return {
+          ...target,
+          day: Math.min(day, daysInMonth(target.year, target.monthNumber)),
+        };
+      }
+
+      function shiftDateParts(year, monthNumber, day, days) {
+        const date = new Date(Date.UTC(year, monthNumber - 1, day + days));
+        return {
+          year: date.getUTCFullYear(),
+          monthNumber: date.getUTCMonth() + 1,
+          day: date.getUTCDate(),
+        };
+      }
+
+      function previousWorkdayIfWeekend(dateParts) {
+        const dayOfWeek = new Date(Date.UTC(dateParts.year, dateParts.monthNumber - 1, dateParts.day)).getUTCDay();
+        if (dayOfWeek === 6) return shiftDateParts(dateParts.year, dateParts.monthNumber, dateParts.day, -1);
+        if (dayOfWeek === 0) return shiftDateParts(dateParts.year, dateParts.monthNumber, dateParts.day, -2);
+        return dateParts;
+      }
+
+      function renewalNoticeForPaymentRow(row) {
+        const end = parseFullRocDateParts(row?.end);
+        if (!end) return null;
+        const rawNotice = addCalendarMonthsClamped(end.westernYear, end.monthNumber, end.day, -1);
+        const notice = previousWorkdayIfWeekend(rawNotice);
+        return {
+          year: notice.year,
+          monthNumber: notice.monthNumber,
+          dateKey: `${notice.year}-${String(notice.monthNumber).padStart(2, "0")}-${String(notice.day).padStart(2, "0")}`,
+        };
+      }
+
+      function stableRenewalLeadDraftId(row, venue, notice) {
+        const key = [
+          "renewal-lead",
+          notice.year,
+          venue,
+          `${notice.monthNumber}月`,
+          notice.dateKey,
+          normalizeCustomerId(row.id),
+          row.company,
+          row.name,
+          row.cycle,
+          row.start,
+          row.end,
+        ].join("|");
+        let hash = 0;
+        for (let index = 0; index < key.length; index += 1) {
+          hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
+        }
+        return `renewal-${notice.year}-${venue}-${notice.monthNumber}-${normalizeCustomerId(row.id) || "noid"}-${hash.toString(36)}`;
+      }
+
+      function readNoticeLog() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(noticeStorageKey) || "{}");
+          return saved && typeof saved === "object" ? saved : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function hasActiveNotice(itemId, noticeLog) {
+        const lastNotifiedAt = noticeLog?.[itemId]?.lastNotifiedAt;
+        if (!lastNotifiedAt) return false;
+        const age = daysSinceDateKey(lastNotifiedAt);
+        return age !== null && age < followUpDays;
+      }
+
+      function isClosingOrNonbillableRow(row) {
+        const text = `${row?.section || ""} ${row?.note || ""} ${row?.manualStatus || ""}`;
+        return /遷出|退款|已結束|結束|不續約|不續|已歇業|不收款/.test(text);
+      }
+
+      function isPaymentCompleteRow(row) {
+        return Boolean(normalizePaymentText(row?.paidAmount));
+      }
+
+      function rowNeedsRenewalLead(row) {
+        if (!row || isClosingOrNonbillableRow(row) || isPaymentCompleteRow(row)) return false;
+        if (!normalizeCustomerId(row.id) && !row.company && !row.name) return false;
+        return Boolean(parseFullRocDateParts(row.end));
+      }
+
+      function itemNeedsHomeDraftAlert(item, noticeLog) {
+        if (!item || item.kind !== "續約") return false;
+        if (hasActiveNotice(item.id, noticeLog)) return false;
+        const status = item.status || "today";
+        return status === "today" || status === "needs-check";
+      }
+
+      function generatedRenewalNeedsHomeAlert(data, noticeLog) {
+        const yearsByVenue = data?.paymentImportedByYear || {};
+        const today = todayDateKey();
+        return Object.entries(yearsByVenue).some(([venue, byYear]) =>
+          Object.values(byYear || {}).some((byMonth) =>
+            Object.values(byMonth || {}).some((rows) =>
+              (rows || []).some((row) => {
+                if (!rowNeedsRenewalLead(row)) return false;
+                const notice = renewalNoticeForPaymentRow(row);
+                if (!notice || notice.dateKey > today) return false;
+                return !hasActiveNotice(stableRenewalLeadDraftId(row, venue, notice), noticeLog);
+              }),
+            ),
+          ),
+        );
+      }
+
+      async function refreshDraftEntryAlert() {
+        window.clearTimeout(draftAlertTimer);
+        draftAlertTimer = window.setTimeout(async () => {
+          if (!draftsEntry || panel.dataset.locked === "true" || !window.HJ_DB?.loadPlatformData) return;
+          try {
+            const noticeLog = readNoticeLog();
+            const data = await window.HJ_DB.loadPlatformData();
+            const savedDraftNeedsAlert = (data?.draftItems || []).some((item) => itemNeedsHomeDraftAlert(item, noticeLog));
+            const generatedDraftNeedsAlert = generatedRenewalNeedsHomeAlert(data, noticeLog);
+            draftsEntry.classList.toggle("draft-alert", savedDraftNeedsAlert || generatedDraftNeedsAlert);
+          } catch (error) {
+            draftsEntry.classList.remove("draft-alert");
+          }
+        }, 120);
+      }
     </script>
   </body>
 </html>

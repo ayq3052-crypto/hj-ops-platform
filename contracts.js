@@ -413,6 +413,8 @@ function contractTermCount(row) {
 
 function parseRocDate(value) {
   const text = String(value || "").trim();
+  const complete = parseCompleteRocDate(text);
+  if (complete) return complete;
   const parts = text.match(/(\d{2,3})\D+(\d{1,2})(?:\D+(\d{1,2}))?/);
   if (!parts) return null;
   return {
@@ -425,6 +427,7 @@ function parseRocDate(value) {
 function parseCompleteRocDate(value) {
   const text = String(value || "").trim();
   const buildDate = (year, month, day) => {
+    if (!year || !month || !day) return null;
     const date = {
       year,
       month: month.padStart(2, "0"),
@@ -435,16 +438,26 @@ function parseCompleteRocDate(value) {
     if (monthNumber < 1 || monthNumber > 12 || dayNumber < 1 || dayNumber > 31) return null;
     return date;
   };
-  const compact = text.match(/^\d{6,7}$/);
-  if (compact && text.length === 7) {
-    return buildDate(text.slice(0, 3), text.slice(3, 5), text.slice(5, 7));
+  const compact = /^\d+$/.test(text) ? text : "";
+  if (compact.length === 7) {
+    return buildDate(compact.slice(0, 3), compact.slice(3, 5), compact.slice(5, 7));
   }
-  if (compact && text.length === 6) {
-    return buildDate(text.slice(0, 2), text.slice(2, 4), text.slice(4, 6));
+  if (compact.length === 6) {
+    const firstThreeYear = Number(compact.slice(0, 3));
+    if (firstThreeYear >= 100 && firstThreeYear <= 150) {
+      return buildDate(compact.slice(0, 3), compact.slice(3, 4), compact.slice(4, 6));
+    }
+    return buildDate(compact.slice(0, 2), compact.slice(2, 4), compact.slice(4, 6));
   }
-  const parts = text.match(/(\d{2,3})\D+(\d{1,2})\D+(\d{1,2})/);
+  if (compact.length === 5) return buildDate(compact.slice(0, 2), compact.slice(2, 3), compact.slice(3, 5));
+  const parts = text.match(/^(\d{2,4})\D+(\d{1,4})(?:\D+(\d{1,2}))?$/);
   if (!parts) return null;
-  return buildDate(parts[1], parts[2], parts[3]);
+  const compactMonthDay = !parts[3] && parts[2].length >= 3 ? parts[2].padStart(4, "0") : "";
+  return buildDate(
+    parts[1],
+    compactMonthDay ? compactMonthDay.slice(0, -2) : parts[2],
+    compactMonthDay ? compactMonthDay.slice(-2) : parts[3],
+  );
 }
 
 function formatRocDate(value) {

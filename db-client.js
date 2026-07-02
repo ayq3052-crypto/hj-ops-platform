@@ -35,6 +35,15 @@
     return `${Number(match[1]) + 1911}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
   };
 
+  const contractYearsFromIso = (start, end) => {
+    const startMatch = String(start || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    const endMatch = String(end || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!startMatch || !endMatch) return "";
+    if (startMatch[2] !== endMatch[2] || startMatch[3] !== endMatch[3]) return "";
+    const years = Number(endMatch[1]) - Number(startMatch[1]);
+    return years > 0 ? String(years) : "";
+  };
+
   const numericMoney = (value) => {
     const match = String(value ?? "").replace(/,/g, "").match(/-?\d+(\.\d+)?/);
     return match ? Number(match[0]) : null;
@@ -220,6 +229,7 @@
       sourceSnapshot: snapshot,
       sourceFormat: "db",
       uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
+      contractYears: textOrEmpty(snapshot.contractYears) || contractYearsFromIso(contract?.start_date || row.contract_start, contract?.end_date || row.contract_end),
       contractTerm: textOrEmpty(snapshot.contractTerm),
       depositPolicy: textOrEmpty(contract?.deposit_policy),
       officeContractMode: storedOfficeMode === "renewal" ? "renewal" : contractModeFromPolicy(contract?.deposit_policy),

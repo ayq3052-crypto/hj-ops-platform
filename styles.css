@@ -1266,8 +1266,12 @@ body[data-venue="taichung"] .record-card.active .record-id {
 }
 
 .date-field {
-  grid-row: span 2;
-  min-height: calc(var(--profile-row) * 2);
+  min-height: 74px;
+}
+
+.date-field.compact-date-field {
+  grid-template-columns: 94px minmax(0, 1fr);
+  min-height: 70px;
 }
 
 .date-inputs,
@@ -1278,6 +1282,12 @@ body[data-venue="taichung"] .record-card.active .record-id {
   gap: 7px;
   min-width: 0;
   padding: 9px;
+}
+
+.date-inputs.contract-date-inputs {
+  grid-template-columns: minmax(64px, 0.72fr) minmax(0, 1.14fr) minmax(0, 1.14fr);
+  gap: 6px;
+  padding: 8px;
 }
 
 .date-inputs label,
@@ -1294,6 +1304,10 @@ body[data-venue="taichung"] .record-card.active .record-id {
   font-size: 10px;
   font-weight: 800;
   line-height: 1;
+}
+
+.date-inputs.contract-date-inputs input {
+  padding: 0 7px;
 }
 
 .inline-inputs {
