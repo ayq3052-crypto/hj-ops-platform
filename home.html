@@ -359,7 +359,7 @@
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260703-home-draft-alert-4"></script>
+    <script src="./db-client.js?v=20260703-home-draft-alert-5"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -848,6 +848,7 @@
       function generatedRenewalNeedsHomeAlert(data, noticeLog) {
         const yearsByVenue = data?.paymentImportedByYear || {};
         const today = todayDateKey();
+        const [todayYear, todayMonth] = today.split("-").map(Number);
         const handledRenewalKeys = new Set();
         (data?.draftItems || []).forEach((item) => {
           if (item?.kind !== "續約") return;
@@ -861,6 +862,7 @@
                 if (!rowNeedsRenewalLead(row)) return false;
                 const notice = renewalNoticeForPaymentRow(row);
                 if (!notice || notice.dateKey > today) return false;
+                if (Number(notice.year) !== todayYear || Number(notice.monthNumber) !== todayMonth) return false;
                 const keys = [
                   stableRenewalLeadDraftId(row, venue, notice),
                   noticeRefKey({ venue, year, month, id: row.id }, year),
