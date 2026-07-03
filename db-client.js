@@ -326,10 +326,17 @@
   const draftDbRowToLegacy = (row) => {
     const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
     const sourceMonth = metadata.source_month || (row.scheduled_for ? monthLabel(new Date(row.scheduled_for).getMonth() + 1) : "6月");
+    const sourceYear = Number(metadata.source_year || (row.scheduled_for ? new Date(row.scheduled_for).getFullYear() : 2026)) || 2026;
     const sourceId = metadata.source_id || row.id;
     const label = String(row.title || "").split(" / ").pop() || "訊息草稿";
-    const fallbackPaymentRefs = [{ venue: row.branch_code, month: sourceMonth, year: metadata.source_year || 2026, id: row.customer_no }];
-    const paymentRefs = Array.isArray(metadata.payment_refs) && metadata.payment_refs.length ? metadata.payment_refs : fallbackPaymentRefs;
+    const fallbackPaymentRefs = [{ venue: row.branch_code, month: sourceMonth, year: sourceYear, id: row.customer_no }];
+    const paymentRefs = (Array.isArray(metadata.payment_refs) && metadata.payment_refs.length ? metadata.payment_refs : fallbackPaymentRefs).map((ref) => ({
+      ...ref,
+      venue: ref.venue || ref.branch_code || row.branch_code,
+      month: ref.month || sourceMonth,
+      year: Number(ref.year || sourceYear) || sourceYear,
+      id: textOrEmpty(ref.id || ref.customer_no || row.customer_no),
+    }));
     const dbStatus = String(row.status || "");
     const sourceStatus =
       dbStatus === "posted_waiting" || dbStatus === "sent"
@@ -345,7 +352,7 @@
       id: sourceId,
       venue: row.branch_code,
       month: sourceMonth,
-      year: metadata.source_year || 2026,
+      year: sourceYear,
       status: sourceStatus,
       lastNotifiedAt,
       paymentRefs,
@@ -568,10 +575,18 @@
     }
   };
 
-  const paymentRefKey = (ref = {}) => [
+  const paymentRefKey = (ref = {}, fallbackYear = 2026) => [
     "payment-ref",
     ref.venue || ref.branch_code || "",
-    ref.year || "",
+    ref.year || fallbackYear || 2026,
+    ref.month || "",
+    textOrEmpty(ref.id || ref.customer_no),
+  ].join("|");
+
+  const legacyPaymentRefKey = (ref = {}) => [
+    "payment-ref",
+    ref.venue || ref.branch_code || "",
+    "",
     ref.month || "",
     textOrEmpty(ref.id || ref.customer_no),
   ].join("|");
@@ -580,9 +595,12 @@
     const keys = new Set();
     if (fallbackId) keys.add(String(fallbackId));
     if (metadata.source_id) keys.add(String(metadata.source_id));
+    const fallbackYear = Number(metadata.source_year) || 2026;
     (Array.isArray(metadata.payment_refs) ? metadata.payment_refs : []).forEach((ref) => {
-      const key = paymentRefKey(ref);
-      if (key) keys.add(key);
+      const canonicalKey = paymentRefKey(ref, fallbackYear);
+      const legacyKey = legacyPaymentRefKey(ref);
+      if (canonicalKey) keys.add(canonicalKey);
+      if (legacyKey) keys.add(legacyKey);
     });
     return keys;
   };
@@ -595,14 +613,22 @@
     if (!branch) return;
     const notifiedAt = new Date().toISOString();
     const notifiedDate = dateKeyFromIso(notifiedAt);
+    const sourceYear = Number(item.year) || 2026;
+    const paymentRefs = (Array.isArray(item.paymentRefs) ? item.paymentRefs : []).map((ref) => ({
+      ...ref,
+      venue: ref.venue || item.venue || "taichung",
+      month: ref.month || item.month || null,
+      year: Number(ref.year || sourceYear) || sourceYear,
+      id: textOrEmpty(ref.id || item.id),
+    }));
     const itemMetadata = {
       source_id: textOrEmpty(item.id),
       source_status: "follow",
-      source_year: Number(item.year) || 2026,
+      source_year: sourceYear,
       source_month: textOrEmpty(item.month) || null,
       source_due: textOrEmpty(item.due),
       source_amount: textOrEmpty(item.amount),
-      payment_refs: Array.isArray(item.paymentRefs) ? item.paymentRefs : [],
+      payment_refs: paymentRefs,
       lastNotifiedAt: notifiedDate,
       last_notified_at: notifiedDate,
     };

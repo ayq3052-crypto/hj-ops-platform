@@ -359,7 +359,7 @@
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260703-home-draft-alert-3"></script>
+    <script src="./db-client.js?v=20260703-home-draft-alert-4"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -769,19 +769,37 @@
         }
       }
 
-      function noticeRefKey(ref = {}) {
+      function noticeRefKey(ref = {}, fallbackYear = 2026) {
         const venue = ref.venue || "";
-        const year = ref.year || "";
+        const year = ref.year || fallbackYear || 2026;
         const month = ref.month || "";
         const id = normalizeCustomerId(ref.id);
         return ["payment-ref", venue, year, month, id].join("|");
       }
 
+      function legacyNoticeRefKey(ref = {}) {
+        const venue = ref.venue || "";
+        const month = ref.month || "";
+        const id = normalizeCustomerId(ref.id);
+        return ["payment-ref", venue, "", month, id].join("|");
+      }
+
+      function pushUniqueKey(keys, key) {
+        if (key && !keys.includes(key)) keys.push(key);
+      }
+
       function noticeKeysForItem(item = {}) {
         const keys = [item.id].filter(Boolean);
+        const fallbackYear = Number(item.year) || 2026;
         (item.paymentRefs || []).forEach((ref) => {
-          const key = noticeRefKey(ref);
-          if (key && !keys.includes(key)) keys.push(key);
+          const normalizedRef = {
+            ...ref,
+            venue: ref.venue || item.venue || "",
+            month: ref.month || item.month || "",
+            year: Number(ref.year || fallbackYear) || fallbackYear,
+          };
+          pushUniqueKey(keys, noticeRefKey(normalizedRef, fallbackYear));
+          pushUniqueKey(keys, legacyNoticeRefKey(normalizedRef));
         });
         return keys;
       }
@@ -845,7 +863,8 @@
                 if (!notice || notice.dateKey > today) return false;
                 const keys = [
                   stableRenewalLeadDraftId(row, venue, notice),
-                  noticeRefKey({ venue, year, month, id: row.id }),
+                  noticeRefKey({ venue, year, month, id: row.id }, year),
+                  legacyNoticeRefKey({ venue, month, id: row.id }),
                 ];
                 if (keys.some((key) => handledRenewalKeys.has(key))) return false;
                 return !hasActiveNotice(keys, noticeLog);

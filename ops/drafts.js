@@ -178,19 +178,37 @@ function newerNoticeLog(saved, seededDate) {
   return saved;
 }
 
-function noticeRefKey(ref = {}) {
+function noticeRefKey(ref = {}, fallbackYear = activeYear) {
   const venue = ref.venue || activeVenue;
-  const year = ref.year || activeYear;
+  const year = ref.year || fallbackYear || activeYear || initialPaymentYear;
   const month = ref.month || activeMonth;
   const id = normalizeCustomerId(ref.id);
   return ["payment-ref", venue, year, month, id].join("|");
 }
 
+function legacyNoticeRefKey(ref = {}) {
+  const venue = ref.venue || activeVenue;
+  const month = ref.month || activeMonth;
+  const id = normalizeCustomerId(ref.id);
+  return ["payment-ref", venue, "", month, id].join("|");
+}
+
+function pushUniqueNoticeKey(keys, key) {
+  if (key && !keys.includes(key)) keys.push(key);
+}
+
 function noticeKeysForItem(item = {}) {
   const keys = [item.id].filter(Boolean);
+  const fallbackYear = Number(item.year || activeYear || initialPaymentYear);
   (item.paymentRefs || []).forEach((ref) => {
-    const key = noticeRefKey(ref);
-    if (key && !keys.includes(key)) keys.push(key);
+    const normalizedRef = {
+      ...ref,
+      venue: ref.venue || item.venue || activeVenue,
+      month: ref.month || item.month || activeMonth,
+      year: Number(ref.year || fallbackYear) || fallbackYear,
+    };
+    pushUniqueNoticeKey(keys, noticeRefKey(normalizedRef, fallbackYear));
+    pushUniqueNoticeKey(keys, legacyNoticeRefKey(normalizedRef));
   });
   return keys;
 }
