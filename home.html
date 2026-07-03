@@ -359,7 +359,7 @@
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260702-home-draft-alert-1"></script>
+    <script src="./db-client.js?v=20260703-home-draft-alert-3"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -769,8 +769,29 @@
         }
       }
 
-      function hasActiveNotice(itemId, noticeLog) {
-        const lastNotifiedAt = noticeLog?.[itemId]?.lastNotifiedAt;
+      function noticeRefKey(ref = {}) {
+        const venue = ref.venue || "";
+        const year = ref.year || "";
+        const month = ref.month || "";
+        const id = normalizeCustomerId(ref.id);
+        return ["payment-ref", venue, year, month, id].join("|");
+      }
+
+      function noticeKeysForItem(item = {}) {
+        const keys = [item.id].filter(Boolean);
+        (item.paymentRefs || []).forEach((ref) => {
+          const key = noticeRefKey(ref);
+          if (key && !keys.includes(key)) keys.push(key);
+        });
+        return keys;
+      }
+
+      function hasActiveNotice(keys, noticeLog, seededDate = "") {
+        const candidates = (Array.isArray(keys) ? keys : [keys])
+          .map((key) => noticeLog?.[key]?.lastNotifiedAt)
+          .concat(seededDate ? [seededDate] : [])
+          .filter(Boolean);
+        const lastNotifiedAt = candidates.sort((a, b) => String(b).localeCompare(String(a)))[0];
         if (!lastNotifiedAt) return false;
         const age = daysSinceDateKey(lastNotifiedAt);
         return age !== null && age < followUpDays;
@@ -785,19 +806,23 @@
         return Boolean(normalizePaymentText(row?.paidAmount));
       }
 
+      function rowResolvedForDraft(row) {
+        return Boolean(isClosingOrNonbillableRow(row) || isPaymentCompleteRow(row));
+      }
+
       function rowHasNotifiedNote(row) {
         return /已通知|已貼|提醒/.test(normalizePaymentText(row?.note));
       }
 
       function rowNeedsRenewalLead(row) {
-        if (!row || isClosingOrNonbillableRow(row) || isPaymentCompleteRow(row) || rowHasNotifiedNote(row)) return false;
+        if (!row || rowResolvedForDraft(row) || rowHasNotifiedNote(row)) return false;
         if (!normalizeCustomerId(row.id) && !row.company && !row.name) return false;
         return Boolean(parseFullRocDateParts(row.end));
       }
 
       function itemNeedsHomeDraftAlert(item, noticeLog) {
         if (!item || item.kind !== "續約") return false;
-        if (hasActiveNotice(item.id, noticeLog)) return false;
+        if (hasActiveNotice(noticeKeysForItem(item), noticeLog, item.lastNotifiedAt)) return false;
         const status = item.status || "today";
         return status === "today" || status === "needs-check";
       }
@@ -805,14 +830,25 @@
       function generatedRenewalNeedsHomeAlert(data, noticeLog) {
         const yearsByVenue = data?.paymentImportedByYear || {};
         const today = todayDateKey();
+        const handledRenewalKeys = new Set();
+        (data?.draftItems || []).forEach((item) => {
+          if (item?.kind !== "續約") return;
+          if (itemNeedsHomeDraftAlert(item, noticeLog)) return;
+          noticeKeysForItem(item).forEach((key) => handledRenewalKeys.add(key));
+        });
         return Object.entries(yearsByVenue).some(([venue, byYear]) =>
-          Object.values(byYear || {}).some((byMonth) =>
-            Object.values(byMonth || {}).some((rows) =>
+          Object.entries(byYear || {}).some(([year, byMonth]) =>
+            Object.entries(byMonth || {}).some(([month, rows]) =>
               (rows || []).some((row) => {
                 if (!rowNeedsRenewalLead(row)) return false;
                 const notice = renewalNoticeForPaymentRow(row);
                 if (!notice || notice.dateKey > today) return false;
-                return !hasActiveNotice(stableRenewalLeadDraftId(row, venue, notice), noticeLog);
+                const keys = [
+                  stableRenewalLeadDraftId(row, venue, notice),
+                  noticeRefKey({ venue, year, month, id: row.id }),
+                ];
+                if (keys.some((key) => handledRenewalKeys.has(key))) return false;
+                return !hasActiveNotice(keys, noticeLog);
               }),
             ),
           ),

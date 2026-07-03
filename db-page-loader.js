@@ -3,7 +3,7 @@
     crm: ["./app.js?v=20260702-crm-contract-years-1"],
     contracts: ["./contracts.js?v=20260702-contract-date-normalize-1"],
     payments: ["./ops/payments.js?v=20260702-cycle-regenerate-1"],
-    drafts: ["./ops/drafts.js?v=20260702-renewal-lead-1"],
+    drafts: ["./ops/drafts.js?v=20260703-notice-alias-2"],
   };
 
   const statusText = {

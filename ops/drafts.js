@@ -178,6 +178,23 @@ function newerNoticeLog(saved, seededDate) {
   return saved;
 }
 
+function noticeRefKey(ref = {}) {
+  const venue = ref.venue || activeVenue;
+  const year = ref.year || activeYear;
+  const month = ref.month || activeMonth;
+  const id = normalizeCustomerId(ref.id);
+  return ["payment-ref", venue, year, month, id].join("|");
+}
+
+function noticeKeysForItem(item = {}) {
+  const keys = [item.id].filter(Boolean);
+  (item.paymentRefs || []).forEach((ref) => {
+    const key = noticeRefKey(ref);
+    if (key && !keys.includes(key)) keys.push(key);
+  });
+  return keys;
+}
+
 function loadNoticeLog() {
   try {
     const saved = JSON.parse(localStorage.getItem(NOTICE_STORAGE_KEY) || "{}");
@@ -641,9 +658,13 @@ function rowHasPaidAmount(row) {
   return Boolean(normalizePaymentValue(row.paidAmount));
 }
 
+function rowResolvedForDraft(row) {
+  return Boolean(rowHasPaidAmount(row) || isClosingSection(row?.section) || isNonBillableRow(row));
+}
+
 function rowNeedsCustomerDraft(row) {
   if (!row) return false;
-  if (rowHasPaidAmount(row)) return false;
+  if (rowResolvedForDraft(row)) return false;
   if (isClosingSection(row.section)) return false;
   if (isNonBillableRow(row)) return false;
   return Boolean(normalizeCustomerId(row.id) || row.company || row.name);
@@ -1172,7 +1193,7 @@ function paymentRefComplete(ref) {
   const rows = paymentRowsFor(ref.venue || activeVenue, ref.month || activeMonth, ref.year || activeYear);
   const matches = rows.filter((row) => normalizePaymentValue(row.id) === normalizePaymentValue(ref.id));
   if (matches.length === 0) return false;
-  return matches.some(rowHasPaidAmount);
+  return matches.some(rowResolvedForDraft);
 }
 
 function draftIsPaymentComplete(item) {
@@ -1181,7 +1202,10 @@ function draftIsPaymentComplete(item) {
 }
 
 function noticeForItem(item) {
-  return newerNoticeLog(noticeLog[item.id], item.lastNotifiedAt);
+  return noticeKeysForItem(item)
+    .map((key) => newerNoticeLog(noticeLog[key], item.lastNotifiedAt))
+    .filter(Boolean)
+    .sort((a, b) => String(b.lastNotifiedAt || "").localeCompare(String(a.lastNotifiedAt || "")))[0] || null;
 }
 
 function effectiveStatus(item) {
@@ -1208,12 +1232,18 @@ function noticeSummary(item) {
 }
 
 function markDraftNotified(id) {
-  const previous = noticeLog[id] || {};
-  noticeLog[id] = {
-    lastNotifiedAt: todayKey(),
-    count: Number(previous.count || 0) + 1,
-  };
+  const item = draftItems.find((draft) => draft.id === id) || { id };
+  noticeKeysForItem(item).forEach((key) => {
+    const previous = noticeLog[key] || {};
+    noticeLog[key] = {
+      lastNotifiedAt: todayKey(),
+      count: Number(previous.count || 0) + 1,
+    };
+  });
   saveNoticeLog();
+  window.HJ_DB?.markDraftItemNotified?.(item)?.catch((error) => {
+    console.warn("同步已貼通知狀態失敗", error);
+  });
 }
 
 function visibleDrafts() {

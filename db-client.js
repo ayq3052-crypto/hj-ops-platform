@@ -35,6 +35,11 @@
     return `${Number(match[1]) + 1911}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
   };
 
+  const dateKeyFromIso = (value) => {
+    const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+  };
+
   const contractYearsFromIso = (start, end) => {
     const startMatch = String(start || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
     const endMatch = String(end || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -325,12 +330,24 @@
     const label = String(row.title || "").split(" / ").pop() || "訊息草稿";
     const fallbackPaymentRefs = [{ venue: row.branch_code, month: sourceMonth, year: metadata.source_year || 2026, id: row.customer_no }];
     const paymentRefs = Array.isArray(metadata.payment_refs) && metadata.payment_refs.length ? metadata.payment_refs : fallbackPaymentRefs;
+    const dbStatus = String(row.status || "");
+    const sourceStatus =
+      dbStatus === "posted_waiting" || dbStatus === "sent"
+        ? "follow"
+        : dbStatus === "cancelled" || dbStatus === "done"
+          ? "done"
+          : metadata.source_status || "today";
+    const lastNotifiedAt =
+      textOrEmpty(metadata.lastNotifiedAt || metadata.last_notified_at) ||
+      dateKeyFromIso(row.sent_at) ||
+      (sourceStatus === "follow" ? dateKeyFromIso(row.updated_at) : "");
     return {
       id: sourceId,
       venue: row.branch_code,
       month: sourceMonth,
       year: metadata.source_year || 2026,
-      status: metadata.source_status || "today",
+      status: sourceStatus,
+      lastNotifiedAt,
       paymentRefs,
       kind: row.draft_type === "renewal" ? "續約" : "繳費追蹤",
       title: row.title || [row.customer_no, row.company_name || row.customer_name].filter(Boolean).join(" "),
@@ -551,6 +568,80 @@
     }
   };
 
+  const paymentRefKey = (ref = {}) => [
+    "payment-ref",
+    ref.venue || ref.branch_code || "",
+    ref.year || "",
+    ref.month || "",
+    textOrEmpty(ref.id || ref.customer_no),
+  ].join("|");
+
+  const draftKeysFromMetadata = (metadata = {}, fallbackId = "") => {
+    const keys = new Set();
+    if (fallbackId) keys.add(String(fallbackId));
+    if (metadata.source_id) keys.add(String(metadata.source_id));
+    (Array.isArray(metadata.payment_refs) ? metadata.payment_refs : []).forEach((ref) => {
+      const key = paymentRefKey(ref);
+      if (key) keys.add(key);
+    });
+    return keys;
+  };
+
+  const markDraftItemNotified = async (item) => {
+    if (!item || typeof item !== "object") return;
+    const client = await getClient();
+    const branches = await getBranches();
+    const branch = branches.byCode[item.venue || "taichung"];
+    if (!branch) return;
+    const notifiedAt = new Date().toISOString();
+    const notifiedDate = dateKeyFromIso(notifiedAt);
+    const itemMetadata = {
+      source_id: textOrEmpty(item.id),
+      source_status: "follow",
+      source_year: Number(item.year) || 2026,
+      source_month: textOrEmpty(item.month) || null,
+      source_due: textOrEmpty(item.due),
+      source_amount: textOrEmpty(item.amount),
+      payment_refs: Array.isArray(item.paymentRefs) ? item.paymentRefs : [],
+      lastNotifiedAt: notifiedDate,
+      last_notified_at: notifiedDate,
+    };
+    const itemKeys = draftKeysFromMetadata(itemMetadata, item.id);
+    const { data, error } = await client.from("message_drafts").select("id,branch_id,metadata");
+    if (error) throw error;
+    const matches = (data || []).filter((row) => {
+      if (row.branch_id && row.branch_id !== branch.id) return false;
+      const rowKeys = draftKeysFromMetadata(row.metadata || {}, row.metadata?.source_id);
+      return Array.from(itemKeys).some((key) => rowKeys.has(key));
+    });
+    for (const row of matches) {
+      const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const { error: updateError } = await client
+        .from("message_drafts")
+        .update({
+          status: "posted_waiting",
+          sent_at: notifiedAt,
+          metadata: { ...metadata, ...itemMetadata },
+        })
+        .eq("id", row.id);
+      if (updateError) throw updateError;
+    }
+    if (matches.length) return;
+    const firstMessage = Array.isArray(item.messages) ? item.messages[0] : null;
+    const { error: insertError } = await client.from("message_drafts").insert({
+      branch_id: branch.id,
+      channel: "line",
+      draft_type: item.kind === "續約" ? "renewal" : "payment_reminder",
+      title: textOrEmpty(item.title) || textOrEmpty(item.id) || "訊息草稿",
+      body: textOrEmpty(firstMessage?.body),
+      status: "posted_waiting",
+      sent_at: notifiedAt,
+      requires_human_confirmation: true,
+      metadata: itemMetadata,
+    });
+    if (insertError) throw insertError;
+  };
+
   const parseAutoDraftSourceId = (sourceId) => {
     const match = String(sourceId || "").match(/^auto-(\d{4})-(taichung|huanrui)-(\d{1,2})-([^-]+)/);
     if (!match) return null;
@@ -621,5 +712,6 @@
     applyPlatformGlobals,
     installLocalStorageSync,
     clearLegacyLocalDataForDb,
+    markDraftItemNotified,
   };
 })();
