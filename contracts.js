@@ -35,6 +35,18 @@ let blankContractType = "registration";
 let contractEditing = false;
 let contractDrafts = loadContractDrafts();
 
+const lesseeContractDisplayFields = [
+  { key: "lesseeCompany", label: "承租人公司名稱", outputLabel: "承租人公司名稱" },
+  { key: "lesseeName", label: "負責人", outputLabel: "負責人" },
+  { key: "lesseeAddress", label: "地址", outputLabel: "地址" },
+  { key: "identityNumber", label: "身分證統一編號", outputLabel: "身分證統一編號" },
+  { key: "birthday", label: "出生年月日", outputLabel: "出生" },
+  { key: "companyNumber", label: "公司統一編號", outputLabel: "公司統一編號" },
+  { key: "phone", label: "聯絡電話", outputLabel: "聯絡電話" },
+];
+
+const lesseeContractDisplayFieldKeys = new Set(lesseeContractDisplayFields.map((field) => field.key));
+
 applyInitialUrlState();
 
 function escapeHtml(value) {
@@ -579,6 +591,40 @@ function contractDraftKey(row) {
   return `${row?.venue || activeVenue}:${activeYear}:${displayId(row)}`;
 }
 
+function contractSupportsLesseeDisplayControl(rowOrValues) {
+  return !rowOrValues?.isBlank && !rowOrValues?.isBlankContract;
+}
+
+function lesseeDisplayFieldsFromDraft(row, draft = contractDrafts[contractDraftKey(row)] || {}) {
+  if (!contractSupportsLesseeDisplayControl(row)) return lesseeContractDisplayFields.map((field) => field.key);
+  if (!Object.prototype.hasOwnProperty.call(draft, "lesseeVisibleFields")) {
+    return lesseeContractDisplayFields.map((field) => field.key);
+  }
+  if (!Array.isArray(draft.lesseeVisibleFields)) return lesseeContractDisplayFields.map((field) => field.key);
+  const raw = draft.lesseeVisibleFields;
+  const clean = raw.filter((key) => lesseeContractDisplayFieldKeys.has(key));
+  return clean;
+}
+
+function lesseeDisplayFieldSet(values) {
+  if (!contractSupportsLesseeDisplayControl(values)) {
+    return new Set(lesseeContractDisplayFields.map((field) => field.key));
+  }
+  if (!Object.prototype.hasOwnProperty.call(values, "lesseeVisibleFields")) {
+    return new Set(lesseeContractDisplayFields.map((field) => field.key));
+  }
+  if (!Array.isArray(values.lesseeVisibleFields)) {
+    return new Set(lesseeContractDisplayFields.map((field) => field.key));
+  }
+  const raw = values.lesseeVisibleFields;
+  const clean = raw.filter((key) => lesseeContractDisplayFieldKeys.has(key));
+  return new Set(clean);
+}
+
+function isLesseeDisplayFieldVisible(values, key) {
+  return lesseeDisplayFieldSet(values).has(key);
+}
+
 function contractBaseFields(row) {
   const venue = getVenueConfig(row.venue || activeVenue);
   const defaults = getVenueDefaults(row.venue || activeVenue);
@@ -611,6 +657,7 @@ function contractBaseFields(row) {
     bankCode: defaults.bankCode,
     bankAccount: defaults.bankAccount,
     isBlankContract: Boolean(row?.isBlank),
+    lesseeVisibleFields: lesseeDisplayFieldsFromDraft(row),
     contractType: type,
     contractTypeLabel: contractTypeLabel(type),
     officeContractMode: officeMode,
@@ -816,6 +863,23 @@ function previewSpan(key, value, fallback = "") {
   return `<span data-preview-key="${escapeHtml(key)}">${overlayText(value, fallback)}</span>`;
 }
 
+function renderLesseeContractLines(values) {
+  const visible = lesseeDisplayFieldSet(values);
+  return lesseeContractDisplayFields
+    .filter((field) => visible.has(field.key))
+    .map(
+      (field) => `
+        <p>${escapeHtml(field.outputLabel)}：${previewSpan(field.key, values[field.key])}</p>
+      `
+    )
+    .join("");
+}
+
+function renderLesseeContractBlock(values) {
+  const lines = renderLesseeContractLines(values);
+  return lines ? `<section class="lessee-block">${lines}</section>` : "";
+}
+
 function officialStampAsset(values) {
   const venueCode = String(values.venue || "").includes("環瑞") ? "huanrui" : "taichung";
   const asset = window.HJ_STAMP_ASSETS?.[venueCode];
@@ -870,13 +934,17 @@ function renderContractOverlayPage(page, values) {
     { key: "deposit", value: deposit, x: 39.8, y: 94.1, w: 6.8, h: 1.7, align: "center" },
   ];
   const pageTwoFields = [
-    { key: "lesseeCompany", value: values.lesseeCompany, x: 24.0, y: 64.4, w: 30.0, h: 2.0 },
-    { key: "lesseeName", value: values.lesseeName, x: 15.0, y: 68.3, w: 22.0, h: 2.0 },
-    { key: "lesseeAddress", value: values.lesseeAddress, x: 14.0, y: 72.2, w: 58.0, h: 2.0, size: "small" },
-    { key: "identityNumber", value: values.identityNumber, x: 24.0, y: 76.0, w: 22.0, h: 2.0 },
-    { key: "birthday", value: values.birthday, x: 13.8, y: 79.8, w: 22.0, h: 2.0 },
-    { key: "companyNumber", value: values.companyNumber, x: 24.0, y: 83.6, w: 20.0, h: 2.0 },
-    { key: "phone", value: values.phone, x: 15.4, y: 87.5, w: 22.0, h: 2.0 },
+    ...[
+      { key: "lesseeCompany", value: values.lesseeCompany, x: 24.0, w: 30.0, h: 2.0 },
+      { key: "lesseeName", value: values.lesseeName, x: 15.0, w: 22.0, h: 2.0 },
+      { key: "lesseeAddress", value: values.lesseeAddress, x: 14.0, w: 58.0, h: 2.0, size: "small" },
+      { key: "identityNumber", value: values.identityNumber, x: 24.0, w: 22.0, h: 2.0 },
+      { key: "birthday", value: values.birthday, x: 13.8, w: 22.0, h: 2.0 },
+      { key: "companyNumber", value: values.companyNumber, x: 24.0, w: 20.0, h: 2.0 },
+      { key: "phone", value: values.phone, x: 15.4, w: 22.0, h: 2.0 },
+    ]
+      .filter((field) => isLesseeDisplayFieldVisible(values, field.key))
+      .map((field, index) => ({ ...field, y: 64.4 + index * 3.85 })),
     { key: "signedDate", value: values.signedDate, x: 70.5, y: 90.4, w: 18.0, h: 2.0, align: "center" },
   ];
   const fields = page === 1 ? pageOneFields : pageTwoFields;
@@ -924,7 +992,7 @@ function renderContractField(label, key, value, mapping) {
   `;
 }
 
-function contractVisibleFieldGroups(fields) {
+function contractVisibleFieldGroups(fields, values = {}) {
   const visibleKeys = new Set([
     "lesseeCompany",
     "lesseeName",
@@ -945,13 +1013,47 @@ function contractVisibleFieldGroups(fields) {
     "paymentTotal",
     "signedDate",
   ]);
+  const visibleLesseeFields = lesseeDisplayFieldSet(values);
 
   return fields
     .map((group) => ({
       ...group,
-      fields: group.fields.filter(([, key]) => visibleKeys.has(key)),
+      fields: group.fields.filter(([, key]) => {
+        if (!visibleKeys.has(key)) return false;
+        if (lesseeContractDisplayFieldKeys.has(key)) return visibleLesseeFields.has(key);
+        return true;
+      }),
     }))
     .filter((group) => group.fields.length);
+}
+
+function renderLesseeDisplayControls(row, values) {
+  if (!contractEditing || !contractSupportsLesseeDisplayControl(row)) return "";
+  const visible = lesseeDisplayFieldSet(values);
+  return `
+    <section class="lessee-display-controls" aria-label="承租人資料顯示控制">
+      <div>
+        <strong>承租人資料顯示</strong>
+        <span>只影響續約合約輸出；取消後整行移除，不留空白。</span>
+      </div>
+      <div class="lessee-display-options">
+        ${lesseeContractDisplayFields
+          .map(
+            (field) => `
+              <label>
+                <input
+                  type="checkbox"
+                  data-lessee-display-field="${escapeHtml(field.key)}"
+                  ${visible.has(field.key) ? "checked" : ""}
+                />
+                <span>${escapeHtml(field.label)}</span>
+              </label>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderBlankContractTypeSwitch(row) {
@@ -986,7 +1088,8 @@ function fieldStatusLabel(missingCount) {
 
 function renderContractMapping(row) {
   const fields = contractFields(row);
-  const visibleFields = contractVisibleFieldGroups(fields);
+  const values = contractFlatValues(row);
+  const visibleFields = contractVisibleFieldGroups(fields, values);
   const missingCount = visibleFields.flatMap((group) => group.fields).filter(([, , value]) => !String(value || "").trim()).length;
   const titleText = row.isBlank ? `${getVenueConfig(row.venue || activeVenue).label} 空白${contractTypeLabel(contractType(row))}合約` : `${displayId(row)} ${row.company || row.name || "未命名"}`;
 
@@ -1010,6 +1113,7 @@ function renderContractMapping(row) {
         </div>
       </div>
       ${renderBlankContractTypeSwitch(row)}
+      ${renderLesseeDisplayControls(row, values)}
       <div class="contract-field-groups">
         ${visibleFields
           .map(
@@ -1167,15 +1271,7 @@ function renderRegistrationContractDraft(values) {
           </div>
         </section>
 
-        <section class="lessee-block">
-          <p>承租人公司名稱：${previewSpan("lesseeCompany", values.lesseeCompany)}</p>
-          <p>負責人：${previewSpan("lesseeName", values.lesseeName)}</p>
-          <p>地址：${previewSpan("lesseeAddress", values.lesseeAddress)}</p>
-          <p>身分證統一編號：${previewSpan("identityNumber", values.identityNumber)}</p>
-          <p>出生：${previewSpan("birthday", values.birthday)}</p>
-          <p>公司統一編號：${previewSpan("companyNumber", values.companyNumber)}</p>
-          <p>聯絡電話：${previewSpan("phone", values.phone)}</p>
-        </section>
+        ${renderLesseeContractBlock(values)}
 
         <p class="contract-date">${previewSpan("signedDate", values.signedDate)}</p>
         <footer>第2頁（共2頁）</footer>
@@ -1354,15 +1450,7 @@ function renderWorkplaceContractDraft(values, type) {
           </div>
         </section>
 
-        <section class="lessee-block">
-          <p>承租人公司名稱：${previewSpan("lesseeCompany", values.lesseeCompany)}</p>
-          <p>負責人：${previewSpan("lesseeName", values.lesseeName)}</p>
-          <p>地址：${previewSpan("lesseeAddress", values.lesseeAddress)}</p>
-          <p>身分證統一編號：${previewSpan("identityNumber", values.identityNumber)}</p>
-          <p>出生：${previewSpan("birthday", values.birthday)}</p>
-          <p>公司統一編號：${previewSpan("companyNumber", values.companyNumber)}</p>
-          <p>聯絡電話：${previewSpan("phone", values.phone)}</p>
-        </section>
+        ${renderLesseeContractBlock(values)}
 
         <p class="contract-date">${previewSpan("signedDate", values.signedDate)}</p>
         <footer>第2頁（共2頁）</footer>
@@ -1745,6 +1833,27 @@ contractSummary.addEventListener("click", (event) => {
     contractEditing = !contractEditing;
     render();
   }
+});
+
+contractSummary.addEventListener("change", (event) => {
+  const toggle = event.target.closest("[data-lessee-display-field]");
+  const row = currentContractRow();
+  if (!toggle || !row || !contractSupportsLesseeDisplayControl(row)) return;
+  const key = contractDraftKey(row);
+  const current = new Set(lesseeDisplayFieldsFromDraft(row, contractDrafts[key] || {}));
+  const fieldKey = toggle.dataset.lesseeDisplayField;
+  if (!lesseeContractDisplayFieldKeys.has(fieldKey)) return;
+  if (toggle.checked) {
+    current.add(fieldKey);
+  } else {
+    current.delete(fieldKey);
+  }
+  contractDrafts[key] = contractDrafts[key] || {};
+  contractDrafts[key].lesseeVisibleFields = lesseeContractDisplayFields
+    .map((field) => field.key)
+    .filter((item) => current.has(item));
+  saveContractDrafts();
+  render();
 });
 
 document.addEventListener("click", (event) => {

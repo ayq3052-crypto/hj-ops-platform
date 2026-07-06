@@ -1338,6 +1338,57 @@ body[data-venue="huanrui"] .blank-contract-type-switch button.active {
   color: #536172;
 }
 
+.lessee-display-controls {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(20, 184, 166, 0.35);
+  border-radius: 8px;
+  background: #f0fdfa;
+  padding: 12px 14px;
+}
+
+.lessee-display-controls strong {
+  display: block;
+  color: #0f3f3a;
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.lessee-display-controls > div > span {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lessee-display-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lessee-display-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid rgba(20, 184, 166, 0.36);
+  border-radius: 999px;
+  background: #fff;
+  color: #0f3f3a;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 0 12px;
+}
+
+.lessee-display-options input {
+  width: 15px;
+  height: 15px;
+  accent-color: #0f766e;
+}
+
 .contract-field-groups {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
