@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>訊息草稿</title>
+    <title>訊息草稿測試版</title>
     <link rel="icon" href="data:," />
     <script src="./auth-gate.js?v=20260629-contract-print-1"></script>
     <link rel="stylesheet" href="./ops/ops-styles.css?v=20260708-draft-test-1" />
@@ -13,6 +13,7 @@
         max-width: none;
         margin-left: auto;
         margin-right: auto;
+        grid-template-columns: 420px minmax(0, 1fr);
       }
 
       .draft-message-box textarea {
@@ -20,37 +21,34 @@
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
       }
 
-      .draft-reader-panel {
-        overflow-x: hidden;
-        overflow-y: auto;
-      }
-
-      .draft-schedule-layout {
-        grid-template-columns: 420px minmax(0, 1fr);
-      }
-
       .draft-message-box textarea:focus {
         outline: 0;
         border-color: #28365d;
+      }
+
+      .draft-reader-panel {
+        overflow-x: hidden;
+        overflow-y: auto;
       }
     </style>
     <script src="./db-client.js?v=20260708-draft-test-1" defer></script>
     <script src="./db-page-loader.js?v=20260708-draft-test-1" defer></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.lucide&&window.lucide.createIcons()"></script>
   </head>
-  <body data-db-page="drafts">
-    <div class="draft-schedule-page">
+  <body data-db-page="drafts" data-draft-test="1">
+    <div class="draft-schedule-page draft-schedule-test-page" data-draft-test="1">
       <header class="topbar">
         <div class="brand">
           <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
             <span class="brand-mark">HJ</span>
           </a>
           <div>
-            <p class="eyebrow">Copy</p>
-            <h1>訊息草稿</h1>
+            <p class="eyebrow">Test Copy</p>
+            <h1>訊息草稿測試版</h1>
           </div>
         </div>
         <div class="topbar-actions">
+          <span class="source-chip test-mode-chip">可選方案測試</span>
           <div class="draft-year-tools" aria-label="訊息年度">
             <span>西元年</span>
             <select id="draftYearSelect" aria-label="選擇訊息年度"></select>
@@ -59,9 +57,9 @@
             <i data-lucide="refresh-cw"></i>
             <span>重新讀取繳費表</span>
           </button>
-          <a class="source-chip" href="./payments.html">
+          <a class="source-chip" href="./drafts.html">
             <i data-lucide="arrow-left"></i>
-            <span>回繳費表</span>
+            <span>回正式草稿</span>
           </a>
         </div>
       </header>
@@ -80,7 +78,7 @@
           <strong data-draft-count="upcoming">0</strong>
         </button>
         <button class="metric" type="button" data-draft-filter="needs-check">
-          <span>待確認</span>
+          <span>需確認</span>
           <strong data-draft-count="needs-check">0</strong>
         </button>
       </section>
@@ -96,8 +94,8 @@
           <button type="button" data-draft-month="3月">3月</button>
           <button type="button" data-draft-month="4月">4月</button>
           <button type="button" data-draft-month="5月">5月</button>
-          <button class="active" type="button" data-draft-month="6月">6月</button>
-          <button type="button" data-draft-month="7月">7月</button>
+          <button type="button" data-draft-month="6月">6月</button>
+          <button class="active" type="button" data-draft-month="7月">7月</button>
           <button type="button" data-draft-month="8月">8月</button>
           <button type="button" data-draft-month="9月">9月</button>
           <button type="button" data-draft-month="10月">10月</button>
@@ -110,7 +108,7 @@
         <section class="draft-list-panel">
           <div class="draft-list-head">
             <div>
-              <p class="eyebrow" id="draftListEyebrow">台中館 / 6月</p>
+              <p class="eyebrow" id="draftListEyebrow">台中館 / 7月</p>
               <h2 id="draftListTitle">今日該貼</h2>
             </div>
             <span class="mini-pill" id="draftListCount">0 則</span>

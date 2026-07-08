@@ -361,6 +361,8 @@
       subtitle: row.company_name || row.customer_name || "",
       due: metadata.source_due || "",
       amount: metadata.source_amount || "",
+      snoozeUntil: textOrEmpty(metadata.snooze_until || metadata.snoozeUntil),
+      followNote: textOrEmpty(metadata.follow_note || metadata.followNote),
       messages: [{ label, body: row.body || "" }],
     };
   };

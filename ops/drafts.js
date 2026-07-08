@@ -11,6 +11,9 @@ const statusLabels = {
   "needs-check": "待確認",
 };
 
+const draftTestMode = document.body?.dataset.draftTest === "1" || document.documentElement?.dataset.draftTest === "1";
+if (draftTestMode) statusLabels["needs-check"] = "需確認";
+
 const venueLabels = {
   taichung: "台中館",
   huanrui: "環瑞館",
@@ -163,6 +166,12 @@ function daysSince(dateKey) {
   const today = parseDateKey(todayKey());
   if (!start || !today) return null;
   return Math.max(0, Math.floor((today - start) / MS_PER_DAY));
+}
+
+function isSnoozed(item) {
+  const snoozeUntil = parseDateKey(item?.snoozeUntil);
+  const today = parseDateKey(todayKey());
+  return Boolean(snoozeUntil && today && snoozeUntil > today);
 }
 
 function newerNoticeLog(saved, seededDate) {
@@ -718,6 +727,98 @@ function formatMoney(value) {
   return number ? number.toLocaleString("en-US") : String(value || "");
 }
 
+function numericMoney(value) {
+  const number = Number(String(value || "").replace(/[^\d]/g, ""));
+  return Number.isFinite(number) ? number : 0;
+}
+
+function planAnnualLabel(monthly) {
+  const number = numericMoney(monthly);
+  return number ? `$${formatMoney(number * 12)} / 年繳` : "輸入月租後自動換算";
+}
+
+function planLine(label, monthly) {
+  const number = numericMoney(monthly);
+  if (!number) return "";
+  const annual = formatMoney(number * 12);
+  if (label === "two") {
+    return `✅ 兩年合約：$${formatMoney(number)}/每月，年繳 $${annual}。（一年繳一次，共分兩年繳。）`;
+  }
+  return `✅ 一年合約：$${formatMoney(number)}/每月，年繳 $${annual}。`;
+}
+
+function renewalPlanFromBody(body) {
+  const text = String(body || "");
+  const oneMatch = text.match(/一年合約：\$?([\d,]+)\/每月，年繳\s*\$?([\d,]+)/);
+  const twoMatch = text.match(/兩年合約：\$?([\d,]+)\/每月，年繳\s*\$?([\d,]+)/);
+  return {
+    one: {
+      enabled: Boolean(oneMatch),
+      monthly: oneMatch ? oneMatch[1].replaceAll(",", "") : "",
+    },
+    two: {
+      enabled: Boolean(twoMatch),
+      monthly: twoMatch ? twoMatch[1].replaceAll(",", "") : "",
+    },
+  };
+}
+
+function renewalPlanLines(plan) {
+  const lines = [];
+  if (plan?.one?.enabled) {
+    const line = planLine("one", plan.one.monthly);
+    if (line) lines.push(line);
+  }
+  if (plan?.two?.enabled) {
+    const line = planLine("two", plan.two.monthly);
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines.join("\n") : "✅ 續約方案請依 CRM / 合約確認。";
+}
+
+function replaceRenewalPlanSection(body, plan) {
+  const text = String(body || "");
+  const nextBlock = "💡 請回覆您的續約方式：";
+  const replacement = `📌 續約方案：\n${renewalPlanLines(plan)}\n\n${nextBlock}`;
+  if (!text.includes("📌 續約方案：") || !text.includes(nextBlock)) return text;
+  return text.replace(/📌 續約方案：[\s\S]*?💡 請回覆您的續約方式：/, replacement);
+}
+
+function isRenewalDraftMessage(item, message) {
+  return String(item?.kind || "").includes("續約") || /續約/.test(`${message?.label || ""}\n${message?.body || ""}`);
+}
+
+function draftActionForItem(item, status = effectiveStatus(item)) {
+  if (status === "needs-check" || String(item?.kind || "").includes("待確認")) {
+    return {
+      label: "需確認",
+      detail: "資料不夠直接貼，先確認公司、金額、日期或服務項目。",
+    };
+  }
+  if (String(item?.kind || "").includes("續約") && status === "follow") {
+    return {
+      label: "續約待回覆",
+      detail: "已貼續約通知，等客戶回覆或下一步合約。",
+    };
+  }
+  if (String(item?.kind || "").includes("續約")) {
+    return {
+      label: "續約詢問",
+      detail: "合約快到期，先問客戶是否續約與選哪個方案。",
+    };
+  }
+  if (status === "follow") {
+    return {
+      label: "催款追蹤",
+      detail: "已貼過通知但繳費表還沒完成，時間到再追。",
+    };
+  }
+  return {
+    label: "繳費通知",
+    detail: "本期費用要貼給客戶，金額與期間要能直接複製。",
+  };
+}
+
 function serviceKindFor(row) {
   const text = [row?.section, row?.item, row?.company].map((value) => String(value || "")).join(" ");
   if (text.includes("辦公室")) return "辦公室";
@@ -1228,6 +1329,7 @@ function noticeForItem(item) {
 
 function effectiveStatus(item) {
   if (draftIsPaymentComplete(item)) return "done";
+  if (isSnoozed(item)) return "follow";
   const notice = noticeForItem(item);
   if (!notice?.lastNotifiedAt) return item.status;
   const age = daysSince(notice.lastNotifiedAt);
@@ -1241,8 +1343,13 @@ function visibleStatusItems(status = activeStatus) {
 
 function noticeSummary(item) {
   if (draftIsPaymentComplete(item)) return "繳費表已有繳費金額，這則草稿不用再追";
+  if (isSnoozed(item)) {
+    const note = item.followNote ? `；${item.followNote}` : "";
+    return `暫延到 ${item.snoozeUntil}${note}`;
+  }
   const notice = noticeForItem(item);
   if (!notice?.lastNotifiedAt) return "尚未記錄已貼通知";
+  if (item.followNote) return `${item.followNote}；上次已貼：${notice.lastNotifiedAt}`;
   const age = daysSince(notice.lastNotifiedAt);
   if (age === null) return `上次已貼：${notice.lastNotifiedAt}`;
   if (age >= FOLLOW_UP_DAYS) return `上次已貼：${notice.lastNotifiedAt}，已 ${age} 天，繳費表仍未完成`;
@@ -1292,6 +1399,95 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function renderTestClassification(item, status) {
+  if (!draftTestMode) return "";
+  const action = draftActionForItem(item, status);
+  return `
+    <div class="draft-test-classification">
+      <span>測試分類</span>
+      <strong>${escapeHtml(action.label)}</strong>
+      <small>${escapeHtml(action.detail)}</small>
+    </div>
+  `;
+}
+
+function renderRenewalPlanEditor(item, message, index, currentBody) {
+  if (!draftTestMode || !isRenewalDraftMessage(item, message)) return "";
+  const plan = renewalPlanFromBody(currentBody);
+  const planRow = (key, label) => {
+    const data = plan[key] || {};
+    const enabled = Boolean(data.enabled);
+    const monthly = data.monthly || "";
+    return `
+      <label class="renewal-plan-row">
+        <input type="checkbox" data-plan-enable="${key}" ${enabled ? "checked" : ""} />
+        <span>${label}</span>
+        <input type="text" inputmode="numeric" data-plan-monthly="${key}" value="${escapeHtml(monthly)}" placeholder="月租" ${enabled ? "" : "disabled"} />
+        <output data-plan-annual="${key}">${escapeHtml(planAnnualLabel(monthly))}</output>
+      </label>
+    `;
+  };
+  return `
+    <div class="renewal-plan-editor" data-renewal-plan-editor data-draft-id="${escapeHtml(item.id)}" data-draft-index="${index}">
+      <div class="renewal-plan-head">
+        <strong>可選方案</strong>
+        <span>勾選方案、輸入月租，年繳會自動換算並更新下方文字。</span>
+      </div>
+      <div class="renewal-plan-grid">
+        ${planRow("one", "一年合約")}
+        ${planRow("two", "兩年合約")}
+      </div>
+    </div>
+  `;
+}
+
+function readRenewalPlanEditor(editor) {
+  const readPlan = (key) => {
+    const checkbox = editor.querySelector(`[data-plan-enable="${key}"]`);
+    const input = editor.querySelector(`[data-plan-monthly="${key}"]`);
+    return {
+      enabled: Boolean(checkbox?.checked),
+      monthly: input?.value || "",
+    };
+  };
+  return {
+    one: readPlan("one"),
+    two: readPlan("two"),
+  };
+}
+
+function syncRenewalPlanEditor(editor, plan = readRenewalPlanEditor(editor)) {
+  ["one", "two"].forEach((key) => {
+    const input = editor.querySelector(`[data-plan-monthly="${key}"]`);
+    const output = editor.querySelector(`[data-plan-annual="${key}"]`);
+    const enabled = Boolean(plan[key]?.enabled);
+    if (input) input.disabled = !enabled;
+    if (output) output.textContent = planAnnualLabel(plan[key]?.monthly);
+  });
+}
+
+function syncDraftEditState(box, item, index) {
+  const isEdited = item ? draftMessageIsEdited(item, Number(index)) : false;
+  box?.querySelector(".draft-edit-state")?.classList.toggle("is-hidden", !isEdited);
+  const resetButton = box?.querySelector("[data-reset-draft-message]");
+  if (resetButton) resetButton.disabled = !isEdited;
+}
+
+function handleRenewalPlanEditorChange(editor) {
+  const draftId = editor.dataset.draftId;
+  const index = Number(editor.dataset.draftIndex);
+  const textarea = document.querySelector(`[data-draft-text="${draftId}"][data-draft-index="${index}"]`);
+  const item = draftItems.find((draft) => draft.id === draftId);
+  if (!textarea || !item) return;
+  const plan = readRenewalPlanEditor(editor);
+  syncRenewalPlanEditor(editor, plan);
+  textarea.value = replaceRenewalPlanSection(textarea.value, plan);
+  updateDraftMessage(draftId, index, textarea.value);
+  const box = textarea.closest(".draft-message-box");
+  resizeDraftTextareas(box || document);
+  syncDraftEditState(box, item, index);
+}
+
 function renderCounts() {
   Object.keys(statusLabels).forEach((status) => {
     const target = document.querySelector(`[data-draft-count="${status}"]`);
@@ -1312,6 +1508,7 @@ function renderYearTools() {
 function renderTabs() {
   document.querySelector(".draft-schedule-page")?.setAttribute("data-active-venue", activeVenue);
   document.querySelector(".draft-schedule-page")?.setAttribute("data-active-year", String(activeYear));
+  document.querySelector(".draft-schedule-page")?.setAttribute("data-draft-test", draftTestMode ? "1" : "0");
   document.querySelectorAll("[data-draft-filter]").forEach((button) => {
     button.classList.toggle("active", button.dataset.draftFilter === activeStatus);
   });
@@ -1350,9 +1547,11 @@ function renderList() {
 
   list.innerHTML = items
     .map(
-      (item) => `
+      (item) => {
+        const action = draftTestMode ? draftActionForItem(item, effectiveStatus(item)) : null;
+        return `
         <button class="draft-list-item ${item.id === selectedDraftId ? "active" : ""}" type="button" data-select-draft="${item.id}">
-          <span class="draft-kind">${escapeHtml(item.kind)}</span>
+          <span class="draft-kind">${escapeHtml(action?.label || item.kind)}</span>
           <strong>${escapeHtml(item.title)}</strong>
           <small>${escapeHtml(item.subtitle)}</small>
           <span class="draft-trace">${escapeHtml(noticeSummary(item))}</span>
@@ -1361,7 +1560,8 @@ function renderList() {
             <b>${escapeHtml(item.amount)}</b>
           </span>
         </button>
-      `,
+      `;
+      },
     )
     .join("");
   renderReader();
@@ -1392,6 +1592,7 @@ function renderReader() {
         <h2>${escapeHtml(item.title)}</h2>
         <span>${escapeHtml(item.subtitle)}</span>
         <p class="draft-follow-note">${escapeHtml(noticeSummary(item))}</p>
+        ${renderTestClassification(item, currentStatus)}
       </div>
       <div class="draft-reader-actions">
         <span class="mini-pill">${escapeHtml(statusLabels[currentStatus] || "已完成")}</span>
@@ -1424,6 +1625,7 @@ function renderReader() {
                 </button>
               </div>
             </div>
+            ${renderRenewalPlanEditor(item, message, index, currentBody)}
             <textarea data-draft-text="${item.id}" data-draft-index="${index}">${escapeHtml(currentBody)}</textarea>
           </section>
         `;
@@ -1542,19 +1744,28 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  const renewalEditor = event.target.closest("[data-renewal-plan-editor]");
+  if (renewalEditor) {
+    handleRenewalPlanEditorChange(renewalEditor);
+    return;
+  }
+
   const textarea = event.target.closest("[data-draft-text]");
   if (!textarea) return;
   updateDraftMessage(textarea.dataset.draftText, textarea.dataset.draftIndex, textarea.value);
   resizeDraftTextareas(textarea.closest(".draft-message-box") || document);
   const item = draftItems.find((draft) => draft.id === textarea.dataset.draftText);
-  const isEdited = item ? draftMessageIsEdited(item, Number(textarea.dataset.draftIndex)) : false;
   const box = textarea.closest(".draft-message-box");
-  box?.querySelector(".draft-edit-state")?.classList.toggle("is-hidden", !isEdited);
-  const resetButton = box?.querySelector("[data-reset-draft-message]");
-  if (resetButton) resetButton.disabled = !isEdited;
+  syncDraftEditState(box, item, textarea.dataset.draftIndex);
 });
 
 document.addEventListener("change", (event) => {
+  const renewalEditor = event.target.closest("[data-renewal-plan-editor]");
+  if (renewalEditor) {
+    handleRenewalPlanEditorChange(renewalEditor);
+    return;
+  }
+
   const yearSelect = event.target.closest("#draftYearSelect");
   if (!yearSelect) return;
   setDraftYear(yearSelect.value);

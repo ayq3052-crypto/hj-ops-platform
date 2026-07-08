@@ -359,7 +359,7 @@
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260703-home-draft-alert-5"></script>
+    <script src="./db-client.js?v=20260708-draft-snooze-1"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -815,6 +815,13 @@
         return age !== null && age < followUpDays;
       }
 
+      function itemSnoozed(item) {
+        const value = item?.snoozeUntil || item?.snooze_until;
+        if (!value) return false;
+        const today = todayDateKey();
+        return String(value) > today;
+      }
+
       function isClosingOrNonbillableRow(row) {
         const text = `${row?.section || ""} ${row?.note || ""} ${row?.manualStatus || ""}`;
         return /遷出|退款|已結束|結束|不續約|不續|已歇業|不收款/.test(text);
@@ -840,6 +847,7 @@
 
       function itemNeedsHomeDraftAlert(item, noticeLog) {
         if (!item || item.kind !== "續約") return false;
+        if (itemSnoozed(item)) return false;
         if (hasActiveNotice(noticeKeysForItem(item), noticeLog, item.lastNotifiedAt)) return false;
         const status = item.status || "today";
         return status === "today" || status === "needs-check";
