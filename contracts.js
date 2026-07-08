@@ -1175,6 +1175,19 @@ function openContractPreviewModal() {
   document.body.classList.add("has-contract-preview-modal");
 }
 
+function contractLogoSrc() {
+  return window.HOUR_JUNGLE_LOGO_DATA || "./assets/hour-jungle-logo.png";
+}
+
+function renderContractLogo(extraClass = "") {
+  const className = `html-contract-logo${extraClass ? ` ${extraClass}` : ""}`;
+  return `
+    <header class="${escapeHtml(className)}">
+      <img src="${escapeHtml(contractLogoSrc())}" alt="HOUR JUNGLE" />
+    </header>
+  `;
+}
+
 function renderRegistrationContractDraft(values) {
   const monthly = plainMoney(values.monthly);
   const deposit = plainMoney(values.deposit);
@@ -1198,9 +1211,7 @@ function renderRegistrationContractDraft(values) {
   return `
     <div class="html-contract-book registration-contract ${modeClass} ${versionClass} ${blankClass}">
       <article class="html-contract-page registration-page-one">
-        <header class="html-contract-logo">
-          <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
-        </header>
+        ${renderContractLogo()}
         <h2>共同工作室租賃契約</h2>
         <p>立契約人</p>
         <p>出租人：${previewSpan("lessor", values.lessor)}（以下簡稱甲方），</p>
@@ -1242,9 +1253,7 @@ function renderRegistrationContractDraft(values) {
       </article>
 
       <article class="html-contract-page">
-        <header class="html-contract-logo second">
-          <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
-        </header>
+        ${renderContractLogo("second")}
         ${renderOfficialStamp(values)}
         <p class="contract-section">第八條：應受強制執行之事項：</p>
         <p class="indent-1">一、租約到期或欠繳房租或終止租約生效時。</p>
@@ -1389,9 +1398,7 @@ function renderWorkplaceContractDraft(values, type) {
   return `
     <div class="html-contract-book workplace-contract ${type}-contract ${modeClass} ${versionClass}">
       <article class="html-contract-page">
-        <header class="html-contract-logo">
-          <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
-        </header>
+        ${renderContractLogo()}
         <h2>${title}</h2>
         <p>立契約人</p>
         <p>出租人：${previewSpan("lessor", values.lessor)}（以下簡稱甲方），</p>
@@ -1422,9 +1429,7 @@ function renderWorkplaceContractDraft(values, type) {
       </article>
 
       <article class="html-contract-page">
-        <header class="html-contract-logo second">
-          <img src="./assets/hour-jungle-logo.png" alt="HOUR JUNGLE" />
-        </header>
+        ${renderContractLogo("second")}
         ${renderOfficialStamp(values)}
         <p class="contract-section">第八條：應受強制執行之事項：</p>
         <p class="indent-1">1、租約到期、欠繳租金或費用、或終止租約生效時。</p>
@@ -1702,7 +1707,21 @@ function cleanupPrintRoot() {
   }
 }
 
-function printContractPdf() {
+function waitForImages(root) {
+  const images = Array.from(root.querySelectorAll("img"));
+  if (!images.length) return Promise.resolve();
+  return Promise.all(
+    images.map((image) => {
+      if (image.complete && image.naturalWidth > 0) return Promise.resolve();
+      return new Promise((resolve) => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", resolve, { once: true });
+      });
+    }),
+  );
+}
+
+async function printContractPdf() {
   cleanupPrintRoot();
   const row = currentContractRow();
   const book = row ? contractBookNode(row) : null;
@@ -1717,6 +1736,7 @@ function printContractPdf() {
   document.body.classList.add("is-printing-contract");
   contractPrintPreviousTitle = document.title || "HJ 客戶合約";
   document.title = contractPrintTitle(row);
+  await waitForImages(printRoot);
   window.print();
 }
 
@@ -1961,7 +1981,8 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
 contractSummary.addEventListener("input", (event) => {
   const input = event.target.closest("[data-contract-field]");
   if (!input) return;
-  handleContractFieldEdit(input);
+  const isCompleteDate = contractDateFields.has(input.dataset.contractField) && isCompleteRocDateValue(input.value);
+  handleContractFieldEdit(input, { finalizeDate: isCompleteDate });
 });
 
 contractSummary.addEventListener("blur", (event) => {
