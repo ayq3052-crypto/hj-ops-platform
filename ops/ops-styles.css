@@ -1071,6 +1071,20 @@ svg {
   color: #9a461b;
 }
 
+.draft-list-item.draft-action-renewal .draft-kind,
+.draft-schedule-page[data-active-venue="huanrui"] .draft-list-item.draft-action-renewal .draft-kind {
+  border-color: #c9b7f5;
+  background: #f3efff;
+  color: #5d3fa0;
+}
+
+.draft-list-item.draft-action-check .draft-kind,
+.draft-schedule-page[data-active-venue="huanrui"] .draft-list-item.draft-action-check .draft-kind {
+  border-color: #efc46f;
+  background: #fff7e2;
+  color: #8a5708;
+}
+
 .draft-meta {
   display: flex;
   justify-content: space-between;

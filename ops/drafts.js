@@ -8,11 +8,11 @@ const statusLabels = {
   today: "今日該貼",
   follow: "已貼待追",
   upcoming: "本月預備",
-  "needs-check": "待確認",
+  "needs-check": "需確認",
 };
 
 const draftTestMode = document.body?.dataset.draftTest === "1" || document.documentElement?.dataset.draftTest === "1";
-if (draftTestMode) statusLabels["needs-check"] = "需確認";
+const renewalPlanEditorEnabled = document.body?.dataset.renewalPlanEditor !== "0";
 
 const venueLabels = {
   taichung: "台中館",
@@ -819,6 +819,14 @@ function draftActionForItem(item, status = effectiveStatus(item)) {
   };
 }
 
+function draftActionClass(action = {}) {
+  const label = String(action.label || "");
+  if (label.includes("續約")) return "draft-action-renewal";
+  if (label.includes("催款")) return "draft-action-follow";
+  if (label.includes("確認")) return "draft-action-check";
+  return "draft-action-payment";
+}
+
 function serviceKindFor(row) {
   const text = [row?.section, row?.item, row?.company].map((value) => String(value || "")).join(" ");
   if (text.includes("辦公室")) return "辦公室";
@@ -1412,7 +1420,7 @@ function renderTestClassification(item, status) {
 }
 
 function renderRenewalPlanEditor(item, message, index, currentBody) {
-  if (!draftTestMode || !isRenewalDraftMessage(item, message)) return "";
+  if (!renewalPlanEditorEnabled || !isRenewalDraftMessage(item, message)) return "";
   const plan = renewalPlanFromBody(currentBody);
   const planRow = (key, label) => {
     const data = plan[key] || {};
@@ -1548,10 +1556,10 @@ function renderList() {
   list.innerHTML = items
     .map(
       (item) => {
-        const action = draftTestMode ? draftActionForItem(item, effectiveStatus(item)) : null;
+        const action = draftActionForItem(item, effectiveStatus(item));
         return `
-        <button class="draft-list-item ${item.id === selectedDraftId ? "active" : ""}" type="button" data-select-draft="${item.id}">
-          <span class="draft-kind">${escapeHtml(action?.label || item.kind)}</span>
+        <button class="draft-list-item ${draftActionClass(action)} ${item.id === selectedDraftId ? "active" : ""}" type="button" data-select-draft="${item.id}">
+          <span class="draft-kind">${escapeHtml(action.label || item.kind)}</span>
           <strong>${escapeHtml(item.title)}</strong>
           <small>${escapeHtml(item.subtitle)}</small>
           <span class="draft-trace">${escapeHtml(noticeSummary(item))}</span>
