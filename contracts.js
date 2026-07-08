@@ -462,7 +462,7 @@ function parseCompleteRocDate(value) {
     return buildDate(compact.slice(0, 2), compact.slice(2, 4), compact.slice(4, 6));
   }
   if (compact.length === 5) return buildDate(compact.slice(0, 2), compact.slice(2, 3), compact.slice(3, 5));
-  const parts = text.match(/^(\d{2,4})\D+(\d{1,4})(?:\D+(\d{1,2}))?$/);
+  const parts = text.match(/^(\d{2,4})\D+(\d{1,4})(?:\D+(\d{1,2}))?\D*$/);
   if (!parts) return null;
   const compactMonthDay = !parts[3] && parts[2].length >= 3 ? parts[2].padStart(4, "0") : "";
   return buildDate(
@@ -591,6 +591,17 @@ function contractDraftKey(row) {
   return `${row?.venue || activeVenue}:${activeYear}:${displayId(row)}`;
 }
 
+function clearBlankContractDraft(venue = activeVenue, type = "") {
+  const normalizedType = type ? normalizeContractType(type, venue) : "";
+  Object.keys(contractDrafts).forEach((key) => {
+    const prefix = `${venue}:blank:`;
+    if (!key.startsWith(prefix)) return;
+    if (normalizedType && key !== `${venue}:blank:${normalizedType}`) return;
+    delete contractDrafts[key];
+  });
+  saveContractDrafts();
+}
+
 function contractSupportsLesseeDisplayControl(rowOrValues) {
   return !rowOrValues?.isBlank && !rowOrValues?.isBlankContract;
 }
@@ -632,8 +643,8 @@ function contractBaseFields(row) {
   const officeMode = defaultOfficeContractMode(row);
   const monthly = monthlyAmount(row);
   const total = paymentTotal(row);
-  const periodMonths = monthsPerPayment(row);
-  const termCount = contractTermCount(row);
+  const periodMonths = row?.isBlank ? "" : monthsPerPayment(row);
+  const termCount = row?.isBlank ? "" : contractTermCount(row);
   const contractYears = row?.isBlank ? "" : contractYearsFromValues(row.start, row.end);
   const fixedPrice = type === "registration" ? 3000 : monthly || "";
   const lesseeCompany = row.company || row.name;
@@ -789,9 +800,9 @@ function contractValuesWithDerivedTotals(values) {
 function calculatedTermCountFromDraft(row, draft = {}) {
   const base = contractBaseFields(row);
   const cleanDraft = contractDraftForRow(row, draft);
-  const startDate = cleanDraft.startDate ?? base.startDate;
-  const endDate = cleanDraft.endDate ?? base.endDate;
-  const periodMonths = numberFromText(cleanDraft.periodMonths ?? base.periodMonths);
+  const startDate = draftValueOrBase(cleanDraft.startDate, base.startDate);
+  const endDate = draftValueOrBase(cleanDraft.endDate, base.endDate);
+  const periodMonths = numberFromText(draftValueOrBase(cleanDraft.periodMonths, base.periodMonths));
   const duration = contractDurationMonthsFromValues(startDate, endDate);
   if (!duration || !periodMonths) return "";
   return String(Math.max(1, Math.ceil(duration / periodMonths)));
@@ -800,7 +811,14 @@ function calculatedTermCountFromDraft(row, draft = {}) {
 function calculatedEndDateFromDraft(row, draft = {}) {
   const base = contractBaseFields(row);
   const cleanDraft = contractDraftForRow(row, draft);
-  return addYearsToRocDate(cleanDraft.startDate ?? base.startDate, cleanDraft.contractYears ?? base.contractYears);
+  return addYearsToRocDate(
+    draftValueOrBase(cleanDraft.startDate, base.startDate),
+    draftValueOrBase(cleanDraft.contractYears, base.contractYears),
+  );
+}
+
+function draftValueOrBase(value, baseValue = "") {
+  return String(value ?? "").trim() ? value : baseValue;
 }
 
 function normalizedContractInputValue(fieldKey, value) {
@@ -1697,13 +1715,20 @@ function resizeContractTextareas(root = document) {
 }
 
 let contractPrintPreviousTitle = "";
+let pendingPrintedBlankDraftKey = "";
 
-function cleanupPrintRoot() {
+function cleanupPrintRoot({ clearPrintedBlank = false } = {}) {
   document.querySelector(".contract-print-root")?.remove();
   document.body.classList.remove("is-printing-contract");
   if (contractPrintPreviousTitle) {
     document.title = contractPrintPreviousTitle;
     contractPrintPreviousTitle = "";
+  }
+  if (clearPrintedBlank && pendingPrintedBlankDraftKey) {
+    delete contractDrafts[pendingPrintedBlankDraftKey];
+    pendingPrintedBlankDraftKey = "";
+    saveContractDrafts();
+    if (actionMode === "blank") render();
   }
 }
 
@@ -1736,6 +1761,7 @@ async function printContractPdf() {
   document.body.classList.add("is-printing-contract");
   contractPrintPreviousTitle = document.title || "HJ 客戶合約";
   document.title = contractPrintTitle(row);
+  pendingPrintedBlankDraftKey = row?.isBlank ? contractDraftKey(row) : "";
   await waitForImages(printRoot);
   window.print();
 }
@@ -1810,7 +1836,9 @@ blankContractButton.addEventListener("click", () => {
   render();
 });
 blankContractOpenButton.addEventListener("click", () => {
-  actionMode = actionMode === "blank" ? "" : "blank";
+  const nextActionMode = actionMode === "blank" ? "" : "blank";
+  if (nextActionMode === "blank") clearBlankContractDraft(activeVenue);
+  actionMode = nextActionMode;
   blankContractType = normalizeContractType(blankContractType, activeVenue);
   if (actionMode === "blank") contractEditing = true;
   render();
@@ -1830,6 +1858,7 @@ contractSummary.addEventListener("click", (event) => {
   const row = currentContractRow();
   if (blankTypeButton) {
     blankContractType = normalizeContractType(blankTypeButton.dataset.blankContractType, activeVenue);
+    if (row?.isBlank) clearBlankContractDraft(activeVenue, blankContractType);
     contractEditing = true;
     render();
     return;
@@ -1917,8 +1946,9 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
   };
   const setDraftField = (fieldKey, value) => {
     contractDrafts[key][fieldKey] = value;
-    const fieldInput = contractSummary.querySelector(`[data-contract-field="${CSS.escape(fieldKey)}"]`);
-    if (fieldInput && fieldInput.value !== value) fieldInput.value = value;
+    contractSummary.querySelectorAll(`[data-contract-field="${CSS.escape(fieldKey)}"]`).forEach((fieldInput) => {
+      if (fieldInput.value !== value) fieldInput.value = value;
+    });
     syncPreviewField(fieldKey, value);
   };
 
@@ -1939,21 +1969,26 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
   if (["startDate", "contractYears"].includes(changedField)) {
     const draft = contractDrafts[key];
     const base = contractBaseFields(row);
-    const startValue = draft.startDate ?? base.startDate;
-    const autoEndDate = isCompleteRocDateValue(startValue) ? calculatedEndDateFromDraft(row, draft) : "";
+    const startValue = changedField === "startDate"
+      ? normalizedValue
+      : draftValueOrBase(draft.startDate, base.startDate);
+    const yearsValue = changedField === "contractYears"
+      ? normalizedValue
+      : draftValueOrBase(draft.contractYears, base.contractYears);
+    const autoEndDate = isCompleteRocDateValue(startValue) ? addYearsToRocDate(startValue, yearsValue) : "";
     if (autoEndDate) setDraftField("endDate", autoEndDate);
   }
 
   if (changedField === "endDate") {
     const draft = contractDrafts[key];
     const base = contractBaseFields(row);
-    const startValue = draft.startDate ?? base.startDate;
+    const startValue = draftValueOrBase(draft.startDate, base.startDate);
     const derivedYears = isCompleteRocDateValue(startValue) && isCompleteRocDateValue(normalizedValue)
       ? contractYearsFromValues(startValue, normalizedValue)
       : "";
     if (derivedYears) {
       setDraftField("contractYears", derivedYears);
-    } else if (numberFromText(draft.contractYears ?? base.contractYears) && isCompleteRocDateValue(startValue)) {
+    } else if (numberFromText(draftValueOrBase(draft.contractYears, base.contractYears)) && isCompleteRocDateValue(startValue)) {
       const autoEndDate = calculatedEndDateFromDraft(row, draft);
       if (autoEndDate) setDraftField("endDate", autoEndDate);
     }
@@ -1962,8 +1997,8 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
   if (["startDate", "endDate", "contractYears", "periodMonths"].includes(changedField)) {
     const draft = contractDrafts[key];
     const base = contractBaseFields(row);
-    const startValue = draft.startDate ?? base.startDate;
-    const endValue = draft.endDate ?? base.endDate;
+    const startValue = draftValueOrBase(draft.startDate, base.startDate);
+    const endValue = draftValueOrBase(draft.endDate, base.endDate);
     const autoTermCount = isCompleteRocDateValue(startValue) && isCompleteRocDateValue(endValue)
       ? calculatedTermCountFromDraft(row, draft)
       : "";
@@ -1991,6 +2026,6 @@ contractSummary.addEventListener("blur", (event) => {
   handleContractFieldEdit(input, { finalizeDate: true });
 }, true);
 
-window.addEventListener("afterprint", cleanupPrintRoot);
+window.addEventListener("afterprint", () => cleanupPrintRoot({ clearPrintedBlank: true }));
 
 render();
