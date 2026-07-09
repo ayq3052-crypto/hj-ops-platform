@@ -2200,14 +2200,14 @@ svg {
 }
 
 .payment-scroll-test-page {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .payment-scroll-test-page .sheet-shell {
-  height: 100vh;
-  min-height: 0;
-  overflow: hidden;
-  padding-bottom: 12px;
+  height: auto;
+  min-height: 100vh;
+  overflow: visible;
+  padding-bottom: 26px;
 }
 
 .payment-scroll-test-page .topbar,
@@ -2217,16 +2217,16 @@ svg {
 }
 
 .payment-scroll-test-page .sheet-layout {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .payment-scroll-test-page .sheet-board {
-  height: 100%;
+  height: auto;
   min-height: 0;
   max-height: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .payment-scroll-test-page .sheet-heading,
@@ -2238,9 +2238,11 @@ svg {
 }
 
 .payment-scroll-test-page .payment-table {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 150px;
-  overflow: auto;
+  max-height: 58vh;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .payment-head span,
