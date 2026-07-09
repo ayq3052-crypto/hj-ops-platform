@@ -368,6 +368,7 @@
       const authKey = "hj-home-auth-v2";
       const unlockKey = "hj-home-unlock-until-v2";
       const failKey = "hj-home-login-fail-v2";
+      const rememberedAccountKey = "hj-home-last-account-v1";
       const legacySessionKey = "hj-home-session-v1";
       const oldAuthKeys = ["hj-home-auth-v1"];
       const oldUnlockKeys = ["hj-home-unlock-until-v1"];
@@ -448,6 +449,26 @@
         localStorage.setItem(authKey, JSON.stringify({ version: 3, accounts }));
       };
 
+      const rememberedAccount = () => {
+        try {
+          return localStorage.getItem(rememberedAccountKey) || "";
+        } catch {
+          return "";
+        }
+      };
+
+      const saveRememberedAccount = (account) => {
+        const normalized = String(account || "").trim().toLowerCase();
+        if (!normalized) return;
+        localStorage.setItem(rememberedAccountKey, normalized);
+      };
+
+      const applyRememberedAccount = () => {
+        if (accountInput.value.trim()) return;
+        const saved = rememberedAccount();
+        if (saved) accountInput.value = saved;
+      };
+
       const nextUrl = () => {
         const raw = new URLSearchParams(window.location.search).get("next") || "";
         if (!raw) return "";
@@ -510,7 +531,6 @@
         panel.dataset.locked = String(locked);
         window.clearTimeout(lockTimer);
         if (!locked) {
-          accountInput.value = "";
           passwordInput.value = "";
           scheduleAutoLock();
           refreshDraftEntryAlert();
@@ -543,8 +563,8 @@
         if (hasValidUnlock()) setNote(formatRemaining());
         window.requestAnimationFrame(() => {
           if (panel.dataset.locked === "true") {
-            accountInput.value = "";
             passwordInput.value = "";
+            applyRememberedAccount();
           }
         });
       };
@@ -555,12 +575,14 @@
         window.HJ_DB?.signOut?.();
         setLocked(true);
         syncMode();
-        accountInput.focus();
+        if (rememberedAccount()) passwordInput.focus();
+        else accountInput.focus();
       };
 
       const resetEntrancePassword = async () => {
         localStorage.removeItem(authKey);
         localStorage.removeItem(unlockKey);
+        localStorage.removeItem(rememberedAccountKey);
         clearFailures();
         oldAuthKeys.forEach((key) => localStorage.removeItem(key));
         oldUnlockKeys.forEach((key) => localStorage.removeItem(key));
@@ -609,6 +631,7 @@
             const salt = createSalt();
             const hash = await hashCredential(account, password, salt);
             await saveCredential(account, { salt, hash });
+            saveRememberedAccount(account);
             clearFailures();
             unlockHome();
             return;
@@ -617,6 +640,7 @@
           const hash = await hashCredential(account, password, credential.salt);
           if (hash === credential.hash) {
             await window.HJ_DB.signInOrSignUp(account, password);
+            saveRememberedAccount(account);
             clearFailures();
             unlockHome();
           } else {
