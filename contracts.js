@@ -2016,8 +2016,7 @@ function handleContractFieldEdit(input, { finalizeDate = false } = {}) {
 contractSummary.addEventListener("input", (event) => {
   const input = event.target.closest("[data-contract-field]");
   if (!input) return;
-  const isCompleteDate = contractDateFields.has(input.dataset.contractField) && isCompleteRocDateValue(input.value);
-  handleContractFieldEdit(input, { finalizeDate: isCompleteDate });
+  handleContractFieldEdit(input, { finalizeDate: false });
 });
 
 contractSummary.addEventListener("blur", (event) => {
