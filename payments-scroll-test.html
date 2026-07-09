@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hour Jungle 客戶繳費表測試版</title>
+    <link rel="icon" href="data:," />
+    <script src="./auth-gate.js?v=20260629-payment-search-2"></script>
+    <link rel="stylesheet" href="./ops/ops-styles.css?v=20260709-payment-scroll-test-1" />
+    <script>
+      (() => {
+        const isLocalTest = window.location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+        const loadScript = (src) => new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error(`無法載入 ${src}`));
+          document.head.appendChild(script);
+        });
+        const demoRows = [
+          { id: "20", name: "劉怡廷", company: "吉爾哈登工作室", section: "年繳 / 2Y", cycle: "Y", start: "114/06/05", end: "115/06/05", price: "1500/m", paidDate: "6/9", paidAmount: "18000", nextDate: "116/06", invoice: "✔️", note: "續約" },
+          { id: "253", name: "張奉琦", company: "仁琦科技有限公司", section: "年繳 / 2Y", cycle: "2Y", start: "114/07/10", end: "116/07/10", price: "1350/m", note: "第2年" },
+          { id: "217", name: "劉基寅", company: "劉基寅建築師事務所", section: "辦公室", cycle: "M", start: "114/06/01", end: "119/06/01", price: "10880/m", paidDate: "6/2", paidAmount: "10880", nextDate: "115/07", invoice: "✔️" },
+          { id: "220", name: "吳銘", company: "沃土謙植有限公司", section: "營登", cycle: "6M", start: "113/07/10", end: "115/07/10", price: "1690/m", note: "合約到期，先確認續約" },
+          { id: "238", name: "莊心瑜", company: "安田有限公司", section: "營登", cycle: "Y", start: "114/07/08", end: "115/07/08", price: "1800/m", note: "已貼待追" },
+          { id: "263", name: "劉翁昌", company: "自由座", section: "自由座", cycle: "M", start: "114/11/11", end: "-", price: "3000/m", note: "劉先生" },
+        ];
+        for (let index = 1; index <= 18; index += 1) {
+          demoRows.push({
+            id: String(300 + index),
+            name: `測試客戶${index}`,
+            company: `捲動測試有限公司${index}`,
+            section: index % 5 === 0 ? "自由座" : "營登",
+            cycle: index % 5 === 0 ? "M" : "6M",
+            start: "114/07/10",
+            end: index % 5 === 0 ? "-" : "116/07/10",
+            price: index % 5 === 0 ? "3000/m" : "1800/m",
+            note: index % 4 === 0 ? "已貼待追" : "",
+          });
+        }
+        const completeDemoRows = demoRows.map((row) => ({
+          paidDate: "",
+          paidAmount: "",
+          nextDate: "",
+          invoice: "",
+          manualStatus: "normal",
+          note: "",
+          ...row,
+        }));
+        if (!isLocalTest) document.documentElement.dataset.dbPage = "payments";
+        if (isLocalTest) {
+          window.hjDefaultPaymentRows = completeDemoRows;
+          window.hjImportedPaymentData = {
+            taichung: { "7月": completeDemoRows },
+            huanrui: { "7月": completeDemoRows.slice(0, 10) },
+          };
+        }
+        document.addEventListener("DOMContentLoaded", async () => {
+          const scripts = isLocalTest
+            ? ["./ops/payments.js?v=20260709-payment-scroll-test-1"]
+            : ["./db-client.js?v=20260702-cycle-regenerate-1", "./db-page-loader.js?v=20260702-cycle-regenerate-1"];
+          for (const src of scripts) await loadScript(src);
+        }, { once: true });
+      })();
+    </script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.lucide&&window.lucide.createIcons()"></script>
+  </head>
+  <body class="payment-scroll-test-page">
+    <div class="app-shell sheet-shell">
+      <header class="topbar">
+        <div class="brand">
+          <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
+            <span class="brand-mark">HJ</span>
+          </a>
+          <div>
+            <p class="eyebrow">台中館月表</p>
+            <h1>客戶繳費表測試版</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="source-chip" href="./crm.html?venue=taichung">
+            <i data-lucide="list-checks"></i>
+            <span>CRM客戶資料</span>
+          </a>
+          <a class="source-chip date-chip" id="calendarMonthLink" href="#" target="_blank" rel="noopener">
+            <i data-lucide="calendar-days"></i>
+            <span id="todayLabel">今日</span>
+          </a>
+          <a class="source-chip" href="./drafts.html" target="_blank" rel="noopener">
+            <i data-lucide="copy"></i>
+            <span>訊息草稿</span>
+          </a>
+        </div>
+        <section class="sheet-year-context" aria-label="年度切換">
+          <div class="year-tools">
+            <label class="year-picker" id="yearPicker">
+              <span>年度</span>
+              <select id="yearSelect" aria-label="繳費年度"></select>
+            </label>
+            <button id="prevYearButton" type="button">← 上一年</button>
+            <button id="nextYearButton" type="button">切到下一年 →</button>
+            <button class="create-year" id="createYearButton" type="button">建立年度</button>
+          </div>
+        </section>
+      </header>
+
+      <section class="sheet-toolbar selected-venue" data-venue-toolbar="taichung" aria-label="台中館月份">
+        <div>
+          <p class="eyebrow">台中館</p>
+          <h2>2026 年客戶繳費</h2>
+        </div>
+        <div class="period-tabs">
+          <div class="month-tabs" aria-label="台中館月份">
+            <button class="month-tab" data-venue="taichung" data-month="1月" type="button">1月</button>
+            <button class="month-tab" data-venue="taichung" data-month="2月" type="button">2月</button>
+            <button class="month-tab" data-venue="taichung" data-month="3月" type="button">3月</button>
+            <button class="month-tab" data-venue="taichung" data-month="4月" type="button">4月</button>
+            <button class="month-tab" data-venue="taichung" data-month="5月" type="button">5月</button>
+            <button class="month-tab active" data-venue="taichung" data-month="6月" type="button">6月</button>
+            <button class="month-tab" data-venue="taichung" data-month="7月" type="button">7月</button>
+            <button class="month-tab" data-venue="taichung" data-month="8月" type="button">8月</button>
+            <button class="month-tab" data-venue="taichung" data-month="9月" type="button">9月</button>
+            <button class="month-tab" data-venue="taichung" data-month="10月" type="button">10月</button>
+            <button class="month-tab" data-venue="taichung" data-month="11月" type="button">11月</button>
+            <button class="month-tab" data-venue="taichung" data-month="12月" type="button">12月</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="sheet-toolbar collapsed-venue" data-venue-toolbar="huanrui" aria-label="環瑞館月份">
+        <div>
+          <p class="eyebrow">環瑞館</p>
+          <h2>2026 年客戶繳費</h2>
+        </div>
+        <div class="period-tabs">
+          <div class="month-tabs" aria-label="環瑞館月份">
+            <button class="month-tab" data-venue="huanrui" data-month="1月" type="button">1月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="2月" type="button">2月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="3月" type="button">3月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="4月" type="button">4月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="5月" type="button">5月</button>
+            <button class="month-tab active" data-venue="huanrui" data-month="6月" type="button">6月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="7月" type="button">7月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="8月" type="button">8月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="9月" type="button">9月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="10月" type="button">10月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="11月" type="button">11月</button>
+            <button class="month-tab" data-venue="huanrui" data-month="12月" type="button">12月</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-strip sheet-summary selected-venue" data-venue-summary="taichung" aria-label="台中館摘要">
+        <button class="metric active" data-venue="taichung" data-payment-filter="all" type="button">
+          <span data-summary-label="total">6月總筆數</span>
+          <strong data-summary-count="all">0</strong>
+        </button>
+        <button class="metric" data-venue="taichung" data-payment-filter="unpaid" type="button">
+          <span>待收款</span>
+          <strong data-summary-count="unpaid">0</strong>
+        </button>
+        <button class="metric" data-venue="taichung" data-payment-filter="invoice" type="button">
+          <span>待發票</span>
+          <strong data-summary-count="invoice">0</strong>
+        </button>
+        <button class="metric" data-venue="taichung" data-payment-filter="closing" type="button">
+          <span>特殊/收尾</span>
+          <strong data-summary-count="closing">0</strong>
+        </button>
+      </section>
+
+      <section class="summary-strip sheet-summary collapsed-venue" data-venue-summary="huanrui" aria-label="環瑞館摘要">
+        <button class="metric" data-venue="huanrui" data-payment-filter="all" type="button">
+          <span data-summary-label="total">6月總筆數</span>
+          <strong data-summary-count="all">0</strong>
+        </button>
+        <button class="metric" data-venue="huanrui" data-payment-filter="unpaid" type="button">
+          <span>待收款</span>
+          <strong data-summary-count="unpaid">0</strong>
+        </button>
+        <button class="metric" data-venue="huanrui" data-payment-filter="invoice" type="button">
+          <span>待發票</span>
+          <strong data-summary-count="invoice">0</strong>
+        </button>
+        <button class="metric" data-venue="huanrui" data-payment-filter="closing" type="button">
+          <span>特殊/收尾</span>
+          <strong data-summary-count="closing">0</strong>
+        </button>
+      </section>
+
+      <main class="sheet-layout">
+        <section class="sheet-board" aria-labelledby="sheetHeading">
+          <div class="sheet-heading">
+            <div>
+              <p class="eyebrow">June</p>
+              <h2 id="sheetHeading">6月台中館繳費表</h2>
+            </div>
+            <label class="search-box sheet-search">
+              <i data-lucide="search"></i>
+              <input id="paymentSearch" type="search" placeholder="搜尋編號、公司、姓名、狀態" />
+            </label>
+            <div class="sheet-heading-actions">
+              <button class="add-customer-toggle" id="todayReset" type="button">顯示全部</button>
+              <button class="add-customer-toggle" id="toggleAddCustomer" type="button">新增客戶</button>
+            </div>
+          </div>
+
+          <section class="add-customer-panel" id="addCustomerPanel" hidden>
+            <div class="add-customer-title">
+              <div class="add-customer-title-line">
+                <strong>新增客戶</strong>
+              </div>
+              <span id="addCustomerContext">台中館 6月</span>
+            </div>
+            <button class="add-customer-close" id="closeAddCustomerPanel" type="button">關閉</button>
+            <label class="add-customer-id">
+              <span>編號</span>
+              <input id="newCustomerId" type="text" autocomplete="off" />
+            </label>
+            <label class="add-customer-name">
+              <span>姓名</span>
+              <input id="newCustomerName" type="text" autocomplete="off" />
+            </label>
+            <label class="add-customer-company">
+              <span>公司</span>
+              <input id="newCustomerCompany" type="text" autocomplete="off" />
+            </label>
+            <label class="add-customer-section">
+              <span>區塊</span>
+              <select id="newCustomerSection">
+                <option value="auto">自動判斷</option>
+                <option value="年繳 / 2Y">年繳 / 2Y</option>
+                <option value="辦公室">辦公室</option>
+                <option value="營登">營登</option>
+                <option value="自由座">自由座</option>
+              </select>
+            </label>
+            <div class="crm-check-panel" id="crmCheckPanel">
+              <div>
+                <strong id="crmCheckTitle">尚未核對 CRM</strong>
+                <span id="crmCheckText">輸入編號後可智慧帶入。</span>
+              </div>
+              <button id="checkCrmButton" type="button">智慧帶入</button>
+            </div>
+            <label class="add-customer-cycle">
+              <span>方式</span>
+              <select id="newCustomerCycle">
+                <option value="M">M</option>
+                <option value="3M">3M</option>
+                <option value="6M">6M</option>
+                <option value="Y" selected>Y</option>
+                <option value="2Y">2Y</option>
+                <option value="3Y">3Y</option>
+              </select>
+            </label>
+            <label class="add-customer-start">
+              <span>起始</span>
+              <input id="newCustomerStart" type="text" placeholder="115/07/01" autocomplete="off" />
+            </label>
+            <label class="add-customer-end">
+              <span>到期</span>
+              <input id="newCustomerEnd" type="text" placeholder="116/07/01" autocomplete="off" />
+            </label>
+            <label class="add-customer-price">
+              <span>金額</span>
+              <input id="newCustomerPrice" type="text" placeholder="1800/m" autocomplete="off" />
+            </label>
+            <label class="add-customer-note">
+              <span>備註</span>
+              <input id="newCustomerNote" type="text" autocomplete="off" />
+            </label>
+            <button class="add-customer-submit" id="addCustomerButton" type="button">新增</button>
+          </section>
+
+          <section class="contract-reminder" id="contractReminder" hidden>
+            <div>
+              <strong>合約到期提醒</strong>
+              <span id="contractReminderText"></span>
+            </div>
+            <div class="contract-reminder-actions">
+              <button class="renewal-smart-fill" id="smartFillRenewal" type="button">智慧帶入續約</button>
+              <button class="renewal-manual-edit" id="openRenewalBasics" type="button">手動修改</button>
+            </div>
+          </section>
+
+          <section class="row-editor" id="rowEditor" hidden>
+            <h3 id="editorTitle">客戶</h3>
+            <label>
+              <span id="paidDateLabel">繳費日</span>
+              <input id="editPaidDate" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span id="paidAmountLabel">繳費金額</span>
+              <input id="editPaidAmount" type="text" autocomplete="off" />
+            </label>
+            <label id="nextDateField">
+              <span>下次繳費</span>
+              <input id="editNextDate" type="text" autocomplete="off" />
+            </label>
+            <label class="editor-check">
+              <input id="editInvoice" type="checkbox" />
+              <span id="invoiceLabel">發票已開</span>
+            </label>
+            <label class="editor-status" id="manualStatusField">
+              <span>狀態</span>
+              <select id="editManualStatus">
+                <option value="normal">一般收款</option>
+                <option value="nonbillable">不收款</option>
+              </select>
+            </label>
+            <label class="editor-note">
+              <span>備註</span>
+              <input id="editNote" type="text" autocomplete="off" />
+            </label>
+            <div class="editor-actions">
+              <button class="restore-action" id="restoreFromClosing" type="button">移回原區</button>
+              <button class="basic-edit-toggle" id="toggleRowBasics" type="button">基本資料</button>
+              <button class="delete-row-action" id="deleteSelectedRow" type="button">刪除</button>
+            </div>
+          </section>
+
+          <section class="row-basics" id="rowBasics" hidden>
+            <div class="row-basics-title">
+              <strong>基本資料</strong>
+              <span id="rowBasicsContext"></span>
+            </div>
+            <label>
+              <span>區塊</span>
+              <select id="editSection">
+                <option value="年繳 / 2Y">年繳 / 2Y</option>
+                <option value="辦公室">辦公室</option>
+                <option value="營登">營登</option>
+                <option value="自由座">自由座</option>
+              </select>
+            </label>
+            <label>
+              <span>姓名</span>
+              <input id="editName" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>公司</span>
+              <input id="editCompany" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>方式</span>
+              <select id="editCycle">
+                <option value="M">M</option>
+                <option value="3M">3M</option>
+                <option value="6M">6M</option>
+                <option value="Y">Y</option>
+                <option value="2Y">2Y</option>
+                <option value="3Y">3Y</option>
+              </select>
+            </label>
+            <label>
+              <span>起始</span>
+              <input id="editStart" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>到期</span>
+              <input id="editEnd" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>金額</span>
+              <input id="editPrice" type="text" autocomplete="off" />
+            </label>
+          </section>
+
+          <div class="payment-table" role="table" aria-label="6月台中館繳費表">
+            <div class="payment-head" role="row">
+              <span>編號</span>
+              <span>姓名</span>
+              <span>客戶</span>
+              <span class="payment-head-cycle">方式</span>
+              <span>起始</span>
+              <span>到期</span>
+              <span>單價</span>
+              <span>收款日</span>
+              <span>金額</span>
+              <span>下次</span>
+              <span>發票</span>
+              <span>狀態/備註</span>
+            </div>
+            <div id="paymentRows" class="payment-body"></div>
+          </div>
+        </section>
+      </main>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="year-action-state" id="yearActionState" aria-live="polite"></div>
+    </div>
+  </body>
+</html>

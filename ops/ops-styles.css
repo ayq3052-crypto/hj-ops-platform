@@ -2199,6 +2199,50 @@ svg {
   color: #a13328;
 }
 
+.payment-scroll-test-page {
+  overflow: hidden;
+}
+
+.payment-scroll-test-page .sheet-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 12px;
+}
+
+.payment-scroll-test-page .topbar,
+.payment-scroll-test-page .sheet-toolbar,
+.payment-scroll-test-page .sheet-summary {
+  flex: 0 0 auto;
+}
+
+.payment-scroll-test-page .sheet-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.payment-scroll-test-page .sheet-board {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+}
+
+.payment-scroll-test-page .sheet-heading,
+.payment-scroll-test-page .add-customer-panel,
+.payment-scroll-test-page .contract-reminder,
+.payment-scroll-test-page .row-editor,
+.payment-scroll-test-page .row-basics {
+  flex: 0 0 auto;
+}
+
+.payment-scroll-test-page .payment-table {
+  flex: 1 1 auto;
+  min-height: 150px;
+  overflow: auto;
+}
+
 .payment-head span,
 .payment-row span,
 .payment-row strong {
