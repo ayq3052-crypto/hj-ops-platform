@@ -738,7 +738,7 @@ function contractFields(row) {
         ["折扣後月租", "monthly", values.monthly, "合約位置：第三條"],
         ["每期繳費月數", "periodMonths", values.periodMonths, "合約位置：第三條"],
         ["總期數", "termCount", values.termCount, "合約位置：第三條"],
-        ["每期繳費日前", "dueDay", values.dueDay, "合約位置：第三條第二項"],
+        ["每期繳費日", "dueDay", values.dueDay, "合約位置：第三條第二項"],
         ["押金", "deposit", values.deposit, "合約位置：第九條"],
         ["本期匯款金額", "paymentTotal", values.paymentTotal, "Pages：匯款區"],
         ["簽約日期", "signedDate", values.signedDate, "合約位置：頁尾日期"],
