@@ -2199,10 +2199,12 @@ svg {
   color: #a13328;
 }
 
+.payment-scroll-layout,
 .payment-scroll-test-page {
   overflow: visible;
 }
 
+.payment-scroll-layout .sheet-shell,
 .payment-scroll-test-page .sheet-shell {
   height: auto;
   min-height: 100vh;
@@ -2210,18 +2212,23 @@ svg {
   padding-bottom: 26px;
 }
 
+.payment-scroll-layout .topbar,
+.payment-scroll-layout .sheet-toolbar,
+.payment-scroll-layout .sheet-summary,
 .payment-scroll-test-page .topbar,
 .payment-scroll-test-page .sheet-toolbar,
 .payment-scroll-test-page .sheet-summary {
   flex: 0 0 auto;
 }
 
+.payment-scroll-layout .sheet-layout,
 .payment-scroll-test-page .sheet-layout {
   flex: 0 0 auto;
   min-height: 0;
   overflow: visible;
 }
 
+.payment-scroll-layout .sheet-board,
 .payment-scroll-test-page .sheet-board {
   height: auto;
   min-height: 0;
@@ -2229,6 +2236,11 @@ svg {
   overflow: visible;
 }
 
+.payment-scroll-layout .sheet-heading,
+.payment-scroll-layout .add-customer-panel,
+.payment-scroll-layout .contract-reminder,
+.payment-scroll-layout .row-editor,
+.payment-scroll-layout .row-basics,
 .payment-scroll-test-page .sheet-heading,
 .payment-scroll-test-page .add-customer-panel,
 .payment-scroll-test-page .contract-reminder,
@@ -2237,6 +2249,7 @@ svg {
   flex: 0 0 auto;
 }
 
+.payment-scroll-layout .payment-table,
 .payment-scroll-test-page .payment-table {
   flex: 0 0 auto;
   min-height: 150px;
