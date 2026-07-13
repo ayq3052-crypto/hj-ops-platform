@@ -1371,7 +1371,7 @@ function validateCreatedId(nextId) {
   return "";
 }
 
-function saveDraft() {
+async function saveDraft() {
   if (!draftRow || !isEditing()) return;
   const nextId = (draftRow.id || "").trim();
   const currentIndex = crmRows.findIndex((row) => getRowKey(row) === selectedKey);
@@ -1407,6 +1407,16 @@ function saveDraft() {
   }
 
   const nextRow = normalizeRow({ ...draftRow, id: nextId, contractTerm: getDisplayContractTerm(draftRow), folder: activeFolder, venue: activeVenue }, activeVenue, activeFolder);
+  setSaveState("正在儲存正式資料...", "saved");
+  try {
+    if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
+    await window.HJ_DB.saveCrmRow(nextRow);
+  } catch (error) {
+    console.error(error);
+    setSaveState(`正式資料未儲存：${error.message || error}`, "error");
+    return;
+  }
+
   if (editMode === "create") {
     nextRow.uid = draftRow.uid || `${activeVenue}-${activeYear}-created-${Date.now()}`;
     crmRows.push(nextRow);
@@ -1418,14 +1428,14 @@ function saveDraft() {
   editMode = "view";
   persistCrmData();
   render();
-  setSaveState(`${activeYear} 已儲存本機測試`, "saved");
+  setSaveState(`${activeYear} 已儲存正式資料`, "saved");
 }
 
 function getRecordTitle(row) {
   return row.company || row.name || `編號 ${displayId(row)}`;
 }
 
-function moveCurrentFolder() {
+async function moveCurrentFolder() {
   if (!draftRow || isEditing()) return;
   const currentIndex = crmRows.findIndex((row) => getRowKey(row) === selectedKey);
   if (currentIndex === -1) return;
@@ -1438,6 +1448,16 @@ function moveCurrentFolder() {
   if (!window.confirm(message)) return;
 
   const nextRow = { ...draftRow, folder: targetFolder };
+  setSaveState("正在儲存正式資料...", "saved");
+  try {
+    if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
+    await window.HJ_DB.saveCrmRow(nextRow);
+  } catch (error) {
+    console.error(error);
+    setSaveState(`正式資料未儲存：${error.message || error}`, "error");
+    return;
+  }
+
   crmRows[currentIndex] = nextRow;
   activeFolder = targetFolder;
   selectedKey = getRowKey(nextRow);

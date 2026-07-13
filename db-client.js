@@ -460,6 +460,72 @@
     if (error) throw error;
   };
 
+  const contractPayloadFromCrmRow = (row, customerId, branchId) => {
+    const startDate = rocToIso(row.start);
+    const endDate = rocToIso(row.end);
+    if (!customerId || !branchId || !startDate || !endDate) return null;
+    return {
+      customer_id: customerId,
+      branch_id: branchId,
+      contract_no: textOrEmpty(row.id),
+      service_type: serviceTypeFromText(row.item, row.category),
+      contract_status: row.folder === "ended" ? "ended" : "active",
+      start_date: startDate,
+      end_date: endDate,
+      signed_date: rocToIso(row.signedAt),
+      payment_cycle: normalizeCycle(row.cycle),
+      monthly_amount: numericMoney(row.amount),
+      deposit_amount: numericMoney(row.deposit),
+      metadata: {
+        source_system: "web_crm",
+        source_snapshot: row,
+      },
+      notes: textOrEmpty(row.notes) || null,
+    };
+  };
+
+  const saveCrmRow = async (row) => {
+    const client = await getClient();
+    const branches = await getBranches();
+    const customerPayload = customerPayloadFromCrmRow(row, branches);
+    if (!customerPayload) throw new Error("CRM 資料不足，無法儲存正式資料");
+
+    const { data: savedCustomer, error: customerError } = await client
+      .from("customers")
+      .upsert(customerPayload, { onConflict: "branch_id,customer_no" })
+      .select("id,branch_id")
+      .single();
+    if (customerError) throw customerError;
+
+    const contractPayload = contractPayloadFromCrmRow(row, savedCustomer.id, savedCustomer.branch_id);
+    if (contractPayload) {
+      const { data: existingContracts, error: existingError } = await client
+        .from("contracts")
+        .select("id")
+        .eq("customer_id", savedCustomer.id)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (existingError) throw existingError;
+
+      if (existingContracts?.[0]?.id) {
+        const { error: contractError } = await client
+          .from("contracts")
+          .update(contractPayload)
+          .eq("id", existingContracts[0].id);
+        if (contractError) throw contractError;
+      } else {
+        const { error: contractError } = await client.from("contracts").insert({
+          ...contractPayload,
+          contract_period: Number(row.contractPeriod || row.contract_period) || 1,
+        });
+        if (contractError) throw contractError;
+      }
+    }
+
+    platformDataPromise = null;
+    return savedCustomer;
+  };
+
   const parsePaymentStorageKey = (key) => {
     if (key === "hjPaymentRows202606TaichungV1") return { venue: "taichung", year: 2026, month: "6月" };
     const match = String(key || "").match(/^hjPaymentRows(\d{4})_(taichung|huanrui)_(\d{1,2}月)_v1$/);
@@ -694,8 +760,7 @@
       for (const [key, value] of entries) {
         try {
           const parsed = JSON.parse(value);
-          if (key === "hj-crm-clean-v5-data-repair") await syncCrmData(parsed);
-          else if (parsePaymentStorageKey(key)) await syncPaymentRows(key, parsed);
+          if (parsePaymentStorageKey(key)) await syncPaymentRows(key, parsed);
           else if (key === "hjDraftMessageEditsV1") await syncDraftEdits(parsed);
         } catch (error) {
           console.warn("DB sync failed", key, error);
@@ -706,7 +771,7 @@
     Storage.prototype.setItem = function setItemWithDbSync(key, value) {
       originalSetItem.call(this, key, value);
       if (this !== localStorage) return;
-      if (key === "hj-crm-clean-v5-data-repair" || parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1") {
+      if (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1") {
         queue.set(key, value);
         window.clearTimeout(timer);
         timer = window.setTimeout(flush, 700);
@@ -740,6 +805,7 @@
     applyPlatformGlobals,
     installLocalStorageSync,
     clearLegacyLocalDataForDb,
+    saveCrmRow,
     markDraftItemNotified,
   };
 })();
