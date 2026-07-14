@@ -1189,7 +1189,9 @@ function renderRows() {
 
     const status = getStatus(row);
     const item = document.createElement("article");
-    item.className = `payment-row ${status.key}`;
+    item.className = ["payment-row", status.key, isClosingSection(row.section) ? "closing-zone" : ""]
+      .filter(Boolean)
+      .join(" ");
     item.classList.toggle("selected", index === selectedRowIndex);
     item.dataset.rowIndex = index;
     item.innerHTML = `

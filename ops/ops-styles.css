@@ -2665,6 +2665,10 @@ svg {
   background: #fff7c7;
 }
 
+.payment-row.closing-zone {
+  background: #fff7c7;
+}
+
 .payment-row.nonbillable {
   background: #f4f8f8;
 }
@@ -2702,6 +2706,12 @@ svg {
 }
 
 .sheet-status.closing {
+  border-color: #e3cf67;
+  background: #fff1a8;
+  color: #765100;
+}
+
+.payment-row.closing-zone .sheet-status.done {
   border-color: #e3cf67;
   background: #fff1a8;
   color: #765100;
