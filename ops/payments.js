@@ -1061,12 +1061,27 @@ function isNonBillableRow(row) {
   );
 }
 
+function isClosedClosingRow(row) {
+  if (!row) return false;
+  if (row.manualStatus === "closed") return true;
+  const text = [row.paidDate, row.paidAmount, row.note].map((value) => String(value || "")).join(" ");
+  return ["已結案", "結案", "已收尾", "收尾完成", "退款完成", "已退款", "不需折讓", "不需開折讓", "無需折讓", "不用折讓"].some((keyword) =>
+    text.includes(keyword),
+  );
+}
+
 function manualStatusForRow(row) {
+  if (isClosingSection(row?.section)) return isClosedClosingRow(row) ? "closed" : "closing";
   return isNonBillableRow(row) ? "nonbillable" : "normal";
 }
 
 function getStatus(row) {
-  if (isClosingSection(row.section) || row.paidDate.includes("歇業") || row.paidAmount.includes("退款")) {
+  const isClosingRow =
+    isClosingSection(row.section) || String(row.paidDate || "").includes("歇業") || String(row.paidAmount || "").includes("退款");
+  if (isClosingRow && isClosedClosingRow(row)) {
+    return { key: "done", label: "結案" };
+  }
+  if (isClosingRow) {
     return { key: "closing", label: "收尾" };
   }
   if (isNonBillableRow(row)) {
@@ -1085,6 +1100,20 @@ function getStatus(row) {
     return { key: "unpaid", label: "待收款" };
   }
   return { key: "check", label: "確認" };
+}
+
+function syncManualStatusOptions(isClosingRow) {
+  const field = document.querySelector("#manualStatusField");
+  const select = document.querySelector("#editManualStatus");
+  const label = field?.querySelector("span");
+  if (!field || !select) return;
+  field.hidden = false;
+  if (label) label.textContent = isClosingRow ? "收尾狀態" : "狀態";
+  Array.from(select.options).forEach((option) => {
+    const closingOption = option.value === "closing" || option.value === "closed";
+    option.hidden = isClosingRow ? !closingOption : closingOption;
+    option.disabled = option.hidden;
+  });
 }
 
 function countRows(rows) {
@@ -1232,7 +1261,7 @@ function renderEditor() {
   document.querySelector("#paidAmountLabel").textContent = isClosingRow ? "退款金額" : "繳費金額";
   document.querySelector("#invoiceLabel").textContent = isClosingRow ? "折讓發票" : "發票已開";
   document.querySelector("#nextDateField").hidden = isClosingRow;
-  document.querySelector("#manualStatusField").hidden = isClosingRow;
+  syncManualStatusOptions(isClosingRow);
   document.querySelector("#toggleRowBasics").hidden = isClosingRow || isContractRow;
   document.querySelector("#editPaidDate").value = row.paidDate;
   document.querySelector("#editPaidAmount").value = row.paidAmount;
