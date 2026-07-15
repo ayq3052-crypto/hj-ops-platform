@@ -1963,7 +1963,7 @@
                   ${plans.map((plan) => `<option value="${plan.value}" data-rate="${plan.rate}" data-mode="${plan.mode}" data-unit="${plan.unit}">${plan.label}</option>`).join("")}
                 </select>
               </span>
-              <span>時數 <input class="inline-number months" inputmode="numeric" data-role="hours"> 小時</span>
+              <span data-hours-wrap>時數 <input class="inline-number months" inputmode="numeric" data-role="hours"> 小時</span>
             </div>
           </div>
         </td>
@@ -2209,6 +2209,7 @@
         const unit = selectedPlan.dataset.unit;
         const rateInput = row.querySelector('[data-role="meetingRate"]');
         const hoursInput = row.querySelector('[data-role="hours"]');
+        const hoursWrap = row.querySelector("[data-hours-wrap]");
         const hours = Math.max(parseNumber(hoursInput.value), 0);
         const unitLabel = row.querySelector("[data-rate-unit]");
         if (row.dataset.meetingPlan !== planSelect.value) {
@@ -2217,6 +2218,7 @@
         }
         const rate = parseNumber(rateInput.value) || defaultRate;
         hoursInput.disabled = mode === "fixed";
+        if (hoursWrap) hoursWrap.hidden = mode === "fixed";
         if (unitLabel) unitLabel.textContent = unit;
         output.value = formatNumber(mode === "fixed" ? rate : rate * hours);
       }
