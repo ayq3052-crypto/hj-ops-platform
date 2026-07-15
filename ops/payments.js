@@ -449,11 +449,11 @@ function sectionFromCrmServiceAndCycle(service, cycle, company) {
   return normalizedCycle ? sectionForNewCustomer(normalizedCycle, company) : "";
 }
 
-function serviceSectionFromCrm(item) {
+function serviceSectionFromCrm(item, fallbackCycle = "", fallbackCompany = "") {
   return sectionFromCrmServiceAndCycle(
     item?.項目 || item?.服務項目 || "",
-    item?.繳費方式 || "",
-    crmCompanyName(item),
+    item?.繳費方式 || fallbackCycle || "",
+    crmCompanyName(item) || fallbackCompany,
   );
 }
 
@@ -491,22 +491,31 @@ function isSameMonthRenewalCycleCandidate(row, oldRow = null) {
   return oldRow ? isRenewalPeriodAfterOldRow(row, oldRow) : false;
 }
 
+function isSameMonthRenewalDuplicate(candidate, oldRow, month = activeMonth, year = activeYear) {
+  if (!candidate || !oldRow || isClosingSection(candidate?.section)) return false;
+  if (!isContractConfirmationRow(oldRow, month, year)) return false;
+  if (!sameCustomerIdentity(candidate, oldRow)) return false;
+  if (!isSameMonthRenewalCycleCandidate(candidate, oldRow)) return false;
+  const oldEndIndex = parseMinguoMonthIndex(oldRow?.end);
+  const candidateStartIndex = parseMinguoMonthIndex(candidate?.start);
+  if (oldEndIndex !== null && candidateStartIndex !== null && candidateStartIndex < oldEndIndex) return false;
+  return true;
+}
+
 function removeSameMonthRenewalDuplicates(rows, venue = activeVenue, month = activeMonth, year = activeYear) {
   const dropIndexes = new Set();
   rows.forEach((oldRow, oldIndex) => {
-    if (!isContractConfirmationRow(oldRow, month, year)) return;
-    const oldEndIndex = parseMinguoMonthIndex(oldRow?.end);
     rows.forEach((candidate, candidateIndex) => {
       if (candidateIndex === oldIndex || dropIndexes.has(candidateIndex)) return;
-      if (isClosingSection(candidate?.section)) return;
-      if (!sameCustomerIdentity(candidate, oldRow)) return;
-      if (!isSameMonthRenewalCycleCandidate(candidate, oldRow)) return;
-      const candidateStartIndex = parseMinguoMonthIndex(candidate?.start);
-      if (oldEndIndex !== null && candidateStartIndex !== null && candidateStartIndex < oldEndIndex) return;
+      if (!isSameMonthRenewalDuplicate(candidate, oldRow, month, year)) return;
       dropIndexes.add(candidateIndex);
     });
   });
   return dropIndexes.size ? rows.filter((_, index) => !dropIndexes.has(index)) : rows;
+}
+
+function findSameMonthRenewalSourceRow(row, rows = paymentRows, month = activeMonth, year = activeYear) {
+  return rows.find((oldRow) => isSameMonthRenewalDuplicate(row, oldRow, month, year));
 }
 
 function crmMatchesInput(item, id, name, company) {
@@ -555,9 +564,10 @@ function fillNewCustomerFromCrm(item) {
 
   const cycle = document.querySelector("#newCustomerCycle");
   if (cycle && item.繳費方式) cycle.value = normalizeCycleForSelect(item.繳費方式);
+  const selectedCycle = cycle?.value || item.繳費方式 || "";
 
   const section = document.querySelector("#newCustomerSection");
-  const crmSection = serviceSectionFromCrm(item);
+  const crmSection = serviceSectionFromCrm(item, selectedCycle, crmCompanyName(item));
   if (section && crmSection) section.value = crmSection;
 }
 
@@ -570,7 +580,7 @@ function crmSourceLabel(item) {
 
 function crmCheckSummary(item) {
   const sectionValue = document.querySelector("#newCustomerSection")?.value || "";
-  const section = sectionValue === "auto" ? serviceSectionFromCrm(item) : sectionValue;
+  const section = sectionValue === "auto" ? serviceSectionFromCrm(item, getValue("#newCustomerCycle"), crmCompanyName(item)) : sectionValue;
   return [
     section || item?.項目 || "項目未填",
     getValue("#newCustomerCycle") || item?.繳費方式 || "方式未填",
@@ -606,9 +616,10 @@ function findRenewalCrmMatch(rows, row) {
 function rowFromRenewalCrm(item, previousRow) {
   const cycle = normalizeCycleForSelect(item?.繳費方式 || previousRow.cycle);
   const company = crmCompanyName(item) || previousRow.company;
+  const section = serviceSectionFromCrm(item, cycle, company) || sectionForNewCustomer(cycle, company) || previousRow.section;
   return {
     ...previousRow,
-    section: serviceSectionFromCrm(item) || sectionForNewCustomer(cycle, company) || previousRow.section,
+    section,
     name: String(item?.姓名 || previousRow.name || "").trim(),
     company,
     cycle,
@@ -2175,6 +2186,34 @@ function addCustomerToCurrentMonth() {
     manualStatus: "",
     note: getValue("#newCustomerNote") || (isExistingCustomer ? "新循環" : "新辦"),
   };
+
+  const renewalSourceRow = findSameMonthRenewalSourceRow(newRow, paymentRows, activeMonth, activeYear);
+  if (renewalSourceRow) {
+    const sourceKey = renewalSourceRow._rowKey;
+    const removedGenerated = removeGeneratedFutureRowsFor(renewalSourceRow);
+    const suppressedBase = suppressFutureBaseRowsFor(renewalSourceRow);
+    const suppressedGenerated = suppressFutureGeneratedRowsFor(renewalSourceRow);
+    const generation = regenerateFuturePaymentsForRow(newRow, activeVenue, activeMonth, activeYear, { sourceKind: "manual" });
+
+    paymentRows = normalizeSectionGroups(removeSameMonthRenewalDuplicates(paymentRows, activeVenue, activeMonth, activeYear));
+    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === sourceKey);
+    if (selectedRowIndex < 0) selectedRowIndex = null;
+    savePaymentRows();
+    clearNewCustomerForm();
+    closeAddCustomerPanel();
+    renderAll();
+
+    let toast = `${id} 本月舊週期保留，已從下一期帶入新循環`;
+    if (generation.created) toast += ` ${generation.created} 筆`;
+    if (generation.stoppedForContract) toast += "，到期前先確認續約";
+    const cleanedCount = removedGenerated + suppressedBase + suppressedGenerated;
+    if (cleanedCount) toast += `，並整理舊循環 ${cleanedCount} 筆`;
+    showToast(toast);
+    window.requestAnimationFrame(() => {
+      document.querySelector(".payment-row.selected")?.scrollIntoView({ block: "center" });
+    });
+    return;
+  }
 
   const duplicateIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, newRow));
   if (duplicateIndex >= 0) {
