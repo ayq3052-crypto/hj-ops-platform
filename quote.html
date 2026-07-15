@@ -1943,9 +1943,9 @@
 
     const createMeetingRoomRow = (row) => {
       const plans = [
-        { value: "dayHourly", label: "平日小時計", rate: 380, mode: "hourly", unit: "元/小時" },
-        { value: "dayFull", label: "平日全天 09:00-18:00前", rate: 2000, mode: "fixed", unit: "元/日" },
-        { value: "eveningHourly", label: "晚上18:00後小時計", rate: 550, mode: "hourly", unit: "元/小時" }
+        { value: "dayHourly", label: "平日小時計", rate: 380, mode: "hourly", unit: "元/小時", quantityLabel: "時數", quantityUnit: "小時", defaultQuantity: 2 },
+        { value: "dayFull", label: "平日全天 09:00-18:00前", rate: 2000, mode: "fixed", unit: "元/日", quantityLabel: "天數", quantityUnit: "天", defaultQuantity: 1 },
+        { value: "eveningHourly", label: "晚上18:00後小時計", rate: 550, mode: "hourly", unit: "元/小時", quantityLabel: "時數", quantityUnit: "小時", defaultQuantity: 2 }
       ];
       const tr = document.createElement("tr");
       tr.className = "item-row linked-row";
@@ -1960,10 +1960,10 @@
               <span>
                 方案
                 <select class="inline-select" data-role="meetingPlan">
-                  ${plans.map((plan) => `<option value="${plan.value}" data-rate="${plan.rate}" data-mode="${plan.mode}" data-unit="${plan.unit}">${plan.label}</option>`).join("")}
+                  ${plans.map((plan) => `<option value="${plan.value}" data-rate="${plan.rate}" data-mode="${plan.mode}" data-unit="${plan.unit}" data-quantity-label="${plan.quantityLabel}" data-quantity-unit="${plan.quantityUnit}" data-default-quantity="${plan.defaultQuantity}">${plan.label}</option>`).join("")}
                 </select>
               </span>
-              <span data-hours-wrap>時數 <input class="inline-number months" inputmode="numeric" data-role="hours"> 小時</span>
+              <span><span data-quantity-label>時數</span> <input class="inline-number months" inputmode="numeric" data-role="meetingQuantity"> <span data-quantity-unit>小時</span></span>
             </div>
           </div>
         </td>
@@ -1985,9 +1985,12 @@
       `;
       tr.querySelector('[data-field="moduleName"]').textContent = row.moduleName;
       tr.querySelector('[data-field="period"]').textContent = row.period;
-      tr.querySelector('[data-role="meetingPlan"]').value = row.plan;
-      tr.querySelector('[data-role="hours"]').value = formatNumber(row.hours);
-      tr.querySelector('[data-role="meetingRate"]').value = "0";
+      const planSelect = tr.querySelector('[data-role="meetingPlan"]');
+      planSelect.value = row.plan;
+      tr.dataset.meetingPlan = planSelect.value;
+      tr.querySelector('[data-role="meetingQuantity"]').value = formatNumber(row.quantity || row.hours || row.days || 1);
+      const selectedPlan = planSelect.options[planSelect.selectedIndex];
+      tr.querySelector('[data-role="meetingRate"]').value = formatNumber(row.rate || selectedPlan?.dataset.rate || 0);
       return tr;
     };
 
@@ -2205,22 +2208,23 @@
         const planSelect = row.querySelector('[data-role="meetingPlan"]');
         const selectedPlan = planSelect.options[planSelect.selectedIndex];
         const defaultRate = parseNumber(selectedPlan.dataset.rate);
-        const mode = selectedPlan.dataset.mode;
         const unit = selectedPlan.dataset.unit;
         const rateInput = row.querySelector('[data-role="meetingRate"]');
-        const hoursInput = row.querySelector('[data-role="hours"]');
-        const hoursWrap = row.querySelector("[data-hours-wrap]");
-        const hours = Math.max(parseNumber(hoursInput.value), 0);
+        const quantityInput = row.querySelector('[data-role="meetingQuantity"]');
+        const quantityLabel = row.querySelector("[data-quantity-label]");
+        const quantityUnit = row.querySelector("[data-quantity-unit]");
         const unitLabel = row.querySelector("[data-rate-unit]");
         if (row.dataset.meetingPlan !== planSelect.value) {
           row.dataset.meetingPlan = planSelect.value;
           rateInput.value = formatNumber(defaultRate);
+          quantityInput.value = formatNumber(parseNumber(selectedPlan.dataset.defaultQuantity) || 1);
         }
         const rate = parseNumber(rateInput.value) || defaultRate;
-        hoursInput.disabled = mode === "fixed";
-        if (hoursWrap) hoursWrap.hidden = mode === "fixed";
+        const quantity = Math.max(parseNumber(quantityInput.value), 0);
+        if (quantityLabel) quantityLabel.textContent = selectedPlan.dataset.quantityLabel || "時數";
+        if (quantityUnit) quantityUnit.textContent = selectedPlan.dataset.quantityUnit || "小時";
         if (unitLabel) unitLabel.textContent = unit;
-        output.value = formatNumber(mode === "fixed" ? rate : rate * hours);
+        output.value = formatNumber(rate * quantity);
       }
 
       if (row.dataset.calc === "officeContract") {
@@ -2589,7 +2593,15 @@
     addRowButton.addEventListener("click", () => {
       const totalInput = quoteBody.querySelector("[data-total], [data-section-total]");
       const totalRow = totalInput.closest("tr");
-      const newRow = createRow({ text: "新增項目", amount: 0 });
+      const newRow = currentService === "meetingRoom"
+        ? createMeetingRoomRow({
+            type: "meetingRoom",
+            moduleName: "會議室租借",
+            period: "使用日期與時段：",
+            plan: "dayFull",
+            quantity: 1
+          })
+        : createRow({ text: "新增項目", amount: 0 });
       if (totalRow.dataset.sectionTotal) newRow.dataset.section = totalRow.dataset.sectionTotal;
       totalRow.before(newRow);
       bindAmountInputs();
