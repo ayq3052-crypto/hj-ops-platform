@@ -491,9 +491,16 @@ function isSameMonthRenewalCycleCandidate(row, oldRow = null) {
   return oldRow ? isRenewalPeriodAfterOldRow(row, oldRow) : false;
 }
 
+function isCurrentMonthRenewalBoundaryRow(row, month = activeMonth, year = activeYear) {
+  if (!row || isClosingSection(row.section)) return false;
+  const target = targetMonthFor(month, year);
+  if (!target) return false;
+  return isContractConfirmationRow(row, month, year) || reachesOrPassesContractEnd(row, target);
+}
+
 function isSameMonthRenewalDuplicate(candidate, oldRow, month = activeMonth, year = activeYear) {
   if (!candidate || !oldRow || isClosingSection(candidate?.section)) return false;
-  if (!isContractConfirmationRow(oldRow, month, year)) return false;
+  if (!isCurrentMonthRenewalBoundaryRow(oldRow, month, year)) return false;
   if (!sameCustomerIdentity(candidate, oldRow)) return false;
   if (!isSameMonthRenewalCycleCandidate(candidate, oldRow)) return false;
   const oldEndIndex = parseMinguoMonthIndex(oldRow?.end);
@@ -582,7 +589,7 @@ function findOverwrittenCurrentMonthBaseRow(row, baseRows, month = activeMonth, 
     baseRows.find((baseRow) =>
       !isClosingSection(baseRow.section) &&
       sameCustomerIdentity(row, baseRow) &&
-      isContractConfirmationRow(baseRow, month, year) &&
+      isCurrentMonthRenewalBoundaryRow(baseRow, month, year) &&
       isRenewalPeriodAfterOldRow(row, baseRow),
     ) || null
   );
@@ -594,7 +601,6 @@ function restoredContractConfirmationNote(savedNote, baseNote) {
 }
 
 function restoreCurrentMonthContractRow(savedRow, baseRow, venue = activeVenue, month = activeMonth, year = activeYear) {
-  const hasSavedPayment = Boolean(savedRow.paidDate || savedRow.paidAmount);
   return normalizeRowForMonth(
     {
       ...savedRow,
@@ -607,7 +613,7 @@ function restoreCurrentMonthContractRow(savedRow, baseRow, venue = activeVenue, 
       end: baseRow.end,
       price: baseRow.price,
       pricePlan: savedRow.pricePlan || baseRow.pricePlan || "",
-      nextDate: hasSavedPayment && savedRow.nextDate ? savedRow.nextDate : baseRow.nextDate || "",
+      nextDate: baseRow.nextDate || "",
       note: restoredContractConfirmationNote(savedRow.note, baseRow.note),
     },
     venue,
@@ -960,9 +966,10 @@ function paymentStorageKeyFor(venue = activeVenue, month = activeMonth, year = a
 
 function saveRowsFor(venue, month, rows, year = activeYear) {
   ensurePaymentYearExists(venue, year);
+  const baseRows = baseRowsFor(venue, month, year);
   const cleanedRows = collapseDuplicateCustomerPeriods(
     removeSameMonthRenewalDuplicates(
-      removeSupersededGeneratedContractRows(rows, venue),
+      removeSupersededGeneratedContractRows(repairSavedRows(rows, baseRows, venue, month, year), venue),
       venue,
       month,
       year,
