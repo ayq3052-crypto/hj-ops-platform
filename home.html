@@ -449,6 +449,15 @@
         localStorage.setItem(authKey, JSON.stringify({ version: 3, accounts }));
       };
 
+      const syncCredentialAndUnlock = async (account, password) => {
+        const salt = createSalt();
+        const hash = await hashCredential(account, password, salt);
+        await saveCredential(account, { salt, hash });
+        saveRememberedAccount(account);
+        clearFailures();
+        unlockHome();
+      };
+
       const rememberedAccount = () => {
         try {
           return localStorage.getItem(rememberedAccountKey) || "";
@@ -628,12 +637,7 @@
           const credential = await credentialFor(account);
           if (!credential) {
             await window.HJ_DB.signInOrSignUp(account, password, { preferSignUp: true });
-            const salt = createSalt();
-            const hash = await hashCredential(account, password, salt);
-            await saveCredential(account, { salt, hash });
-            saveRememberedAccount(account);
-            clearFailures();
-            unlockHome();
+            await syncCredentialAndUnlock(account, password);
             return;
           }
 
@@ -644,12 +648,17 @@
             clearFailures();
             unlockHome();
           } else {
-            const failure = recordFailure();
-            if (failure.cooldownUntil) {
-              setNote("密碼錯誤次數過多，已暫停 2 分鐘。", "error");
-              return;
+            try {
+              await window.HJ_DB.signInOrSignUp(account, password);
+              await syncCredentialAndUnlock(account, password);
+            } catch {
+              const failure = recordFailure();
+              if (failure.cooldownUntil) {
+                setNote("密碼錯誤次數過多，已暫停 2 分鐘。", "error");
+                return;
+              }
+              setNote("帳號或密碼不正確。", "error");
             }
-            setNote("帳號或密碼不正確。", "error");
           }
         } catch (error) {
           const failure = recordFailure();
