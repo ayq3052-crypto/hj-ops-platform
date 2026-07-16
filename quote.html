@@ -2729,7 +2729,13 @@
     });
 
     serviceButtons.forEach((button) => {
-      button.addEventListener("click", () => renderService(button.dataset.service));
+      button.addEventListener("click", () => {
+        if (button.dataset.service === "meetingRoom") {
+          window.location.href = "./quote-meeting-room.html";
+          return;
+        }
+        renderService(button.dataset.service);
+      });
     });
 
     renderService(currentService);

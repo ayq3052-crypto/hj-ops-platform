@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HourJungle 台中館會議室報價單</title>
+  <style>
+    :root {
+      --green: #1f6f63;
+      --green-dark: #16584f;
+      --line: #6f8581;
+      --soft: #f6faf8;
+      --paper: #ffffff;
+      --ink: #111827;
+      --muted: #5d6878;
+      --cream: #fbf6ec;
+      --warning: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #f3f5f3;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      gap: 24px;
+      min-height: 100vh;
+      padding: 30px 34px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 30px;
+      align-self: start;
+      border: 1px solid #d9e1e6;
+      border-radius: 10px;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 18px 40px rgba(39, 54, 49, 0.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #e2e8ef;
+      margin-bottom: 14px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .hj-mark {
+      display: grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 9px;
+      color: #fff;
+      background: #111827;
+      font-size: 23px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .brand span {
+      display: block;
+      color: #6b7280;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 24px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    .sidebar button,
+    .sidebar-link {
+      display: grid;
+      place-items: center;
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid #cfd8df;
+      border-radius: 8px;
+      margin-top: 8px;
+      color: #10201d;
+      background: #fff;
+      font: inherit;
+      font-weight: 800;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .sidebar button.primary,
+    .sidebar button[aria-pressed="true"] {
+      border-color: var(--green);
+      color: #fff;
+      background: #238272;
+    }
+
+    .hint {
+      margin: 14px 0 0;
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .sheet-shell {
+      display: flex;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .sheet {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 14mm 12mm 12mm;
+      background: var(--paper);
+      box-shadow: 0 22px 50px rgba(15, 23, 42, 0.11);
+    }
+
+    .doc-header {
+      text-align: center;
+      margin-bottom: 13px;
+    }
+
+    .doc-header img {
+      width: 84px;
+      height: auto;
+      display: block;
+      margin: 0 auto 5px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .quote-table {
+      border: 2.2px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      table-layout: fixed;
+    }
+
+    .quote-table th,
+    .quote-table td {
+      border-bottom: 1.5px solid #ccdad7;
+      vertical-align: middle;
+    }
+
+    .quote-table th {
+      padding: 9px 10px;
+      font-size: 19px;
+      color: #fff;
+      background: var(--green-dark);
+    }
+
+    .quote-table th.amount-head {
+      width: 31%;
+      color: #17221f;
+      background: #dfead6;
+    }
+
+    .title-row td {
+      padding: 10px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 900;
+      background: var(--soft);
+    }
+
+    .meeting-row td {
+      padding: 0;
+    }
+
+    .meeting-item {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 7px;
+      align-items: stretch;
+      min-height: 104px;
+      padding: 10px 10px 10px 8px;
+    }
+
+    .row-number {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #64748b;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .delete-row {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      min-height: 26px;
+      border: 1px solid #dfc6c6;
+      border-radius: 50%;
+      padding: 0;
+      color: #a52a2a;
+      background: #fff9f9;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .meeting-fields {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 8px 12px;
+      align-items: center;
+    }
+
+    .mode-fields {
+      display: contents;
+    }
+
+    .mode-fields[hidden] {
+      display: none;
+    }
+
+    .detail-box {
+      grid-column: 1 / -1;
+      border: 1px solid #d5dfdf;
+      border-radius: 7px;
+      padding: 8px;
+      background: #fbfdfc;
+    }
+
+    .detail-head,
+    .detail-line {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 82px 40px 26px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .detail-head {
+      margin-bottom: 5px;
+      color: #526071;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .detail-line + .detail-line {
+      margin-top: 5px;
+    }
+
+    .rate-cell {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .rate-cell input[hidden] {
+      display: none;
+    }
+
+    .detail-remove {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      min-height: 24px;
+      border: 1px solid #dfc6c6;
+      border-radius: 50%;
+      padding: 0;
+      color: #a52a2a;
+      background: #fff9f9;
+      font-size: 16px;
+      line-height: 1;
+    }
+
+    .detail-add {
+      width: auto;
+      min-height: 30px;
+      border: 1px solid #bfd5d0;
+      border-radius: 7px;
+      margin-top: 7px;
+      padding: 0 10px;
+      color: #17655b;
+      background: #eef9f6;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+
+    .field {
+      min-width: 0;
+    }
+
+    .field.wide {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 3px;
+      color: #526071;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 30px;
+      border: 1px solid #cbd5df;
+      border-radius: 6px;
+      padding: 3px 8px;
+      color: #111827;
+      background: #fff;
+      font: inherit;
+      font-size: 15px;
+      font-weight: 800;
+      outline: none;
+    }
+
+    .detail-line input,
+    .detail-line select {
+      font-size: 14px;
+      padding-left: 6px;
+      padding-right: 6px;
+    }
+
+    input::placeholder {
+      color: #9aa5b1;
+      font-weight: 700;
+    }
+
+    input.needs-attention {
+      border-color: #238272;
+      box-shadow: 0 0 0 3px rgba(31, 111, 99, 0.16);
+      background: #f3fbf8;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: var(--green);
+      box-shadow: 0 0 0 3px rgba(31, 111, 99, 0.13);
+    }
+
+    .amount-panel {
+      padding: 12px 14px;
+    }
+
+    .amount-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid #d7e0de;
+      color: #1f2937;
+      font-size: 16px;
+      font-weight: 900;
+    }
+
+    .amount-line:last-child {
+      border-bottom: 0;
+    }
+
+    .amount-line input {
+      width: 94px;
+      text-align: right;
+    }
+
+    .unit-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .subtotal {
+      font-size: 20px;
+    }
+
+    .summary-row td {
+      padding: 14px 16px;
+      border-top: 2.2px solid var(--green-dark);
+      background: var(--cream);
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .summary-row td:first-child {
+      color: var(--warning);
+      text-align: center;
+    }
+
+    .summary-row td:last-child {
+      text-align: right;
+      font-size: 24px;
+    }
+
+    .note-row td {
+      padding: 10px 14px;
+      color: #b91c1c;
+      background: #fff4f2;
+      font-size: 14px;
+      line-height: 1.55;
+      font-weight: 800;
+      text-align: left;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .info-box {
+      border: 2px solid #9facb5;
+      border-radius: 7px;
+      padding: 10px 14px;
+      min-height: 112px;
+    }
+
+    .info-box h2 {
+      margin: 0 0 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #d5dee5;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .info-row {
+      display: grid;
+      grid-template-columns: 86px 1fr;
+      gap: 10px;
+      margin: 5px 0;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .info-row b {
+      color: #657184;
+      font-weight: 900;
+    }
+
+    .info-row span[contenteditable="true"] {
+      outline: none;
+    }
+
+    .remarks-box {
+      border: 2px solid #9facb5;
+      border-radius: 7px;
+      margin-top: 12px;
+      padding: 10px 14px;
+    }
+
+    .remarks-box h2 {
+      margin: 0 0 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #d5dee5;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .remarks-list {
+      column-count: 2;
+      column-gap: 22px;
+      color: #111827;
+      font-size: 10.5px;
+      line-height: 1.52;
+    }
+
+    .remarks-list p {
+      break-inside: avoid;
+      margin: 0 0 5px;
+      outline: none;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .actions button {
+      width: auto;
+      min-height: 36px;
+      border: 1px solid #cbd5df;
+      border-radius: 7px;
+      padding: 0 14px;
+      color: #1f2937;
+      background: #fff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .actions button.primary {
+      border-color: var(--green);
+      color: #fff;
+      background: #238272;
+    }
+
+    .sidebar button:disabled,
+    .actions button:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+    }
+
+    @media print {
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      body {
+        background: #fff;
+      }
+
+      .workspace {
+        display: block;
+        min-height: auto;
+        padding: 0;
+      }
+
+      .sidebar,
+      .actions,
+      .delete-row,
+      .detail-add,
+      .detail-remove {
+        display: none !important;
+      }
+
+      .sheet-shell {
+        display: block;
+      }
+
+      .sheet {
+        width: 210mm;
+        min-height: 297mm;
+        padding: 12mm 11mm 10mm;
+        box-shadow: none;
+      }
+
+      input,
+      select {
+        border-color: transparent;
+        padding-left: 0;
+        padding-right: 0;
+        background: transparent;
+        appearance: none;
+        caret-color: transparent;
+      }
+
+      input:focus,
+      select:focus {
+        border-color: transparent;
+        box-shadow: none;
+        outline: none;
+      }
+
+      input::placeholder {
+        color: transparent !important;
+      }
+
+      .meeting-item {
+        grid-template-columns: 28px minmax(0, 1fr);
+      }
+
+      .detail-head,
+      .detail-line {
+        grid-template-columns: minmax(0, 1fr) 70px 34px;
+      }
+
+      .detail-line[data-empty-detail="true"] {
+        display: none !important;
+      }
+
+      .amount-line input {
+        width: 82px;
+      }
+
+      .remarks-list {
+        font-size: 9.8px;
+        line-height: 1.45;
+      }
+
+      .meta-grid,
+      .remarks-box {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="workspace">
+    <aside class="sidebar">
+      <a class="brand" href="./home.html" aria-label="回主畫面" title="回主畫面">
+        <div class="hj-mark">HJ</div>
+        <div>
+          <span>Hour Jungle</span>
+          <strong>會議室報價單</strong>
+        </div>
+      </a>
+      <button type="button" aria-pressed="true">台中館</button>
+      <button type="button" class="primary" id="addDateButton">新增日期 / 時段</button>
+      <button type="button" id="printButton">列印預覽</button>
+      <a class="sidebar-link" href="./quote.html?venue=taichung">← 回報價單</a>
+    </aside>
+
+    <section class="sheet-shell">
+      <article class="sheet" aria-label="會議室報價單">
+        <header class="doc-header">
+          <img src="hour-jungle-logo.png" alt="Hour Jungle">
+          <h1>HourJungle 台中館報價單</h1>
+        </header>
+
+        <table class="quote-table">
+          <thead>
+            <tr>
+              <th>服務項目</th>
+              <th class="amount-head">請款金額 (NTD)含稅</th>
+            </tr>
+          </thead>
+          <tbody id="quoteBody">
+            <tr class="title-row">
+              <td colspan="2">會議室租借（依合約內指定付款時間點）</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="actions">
+          <button type="button" id="addDateButtonBottom">新增日期 / 時段</button>
+          <button type="button" class="primary" id="printButtonBottom">列印預覽</button>
+        </div>
+
+        <section class="meta-grid">
+          <div class="info-box">
+            <h2>匯款資訊</h2>
+            <div class="info-row"><b>帳戶名稱</b><span contenteditable="true">你的空間有限公司</span></div>
+            <div class="info-row"><b>銀行名稱</b><span contenteditable="true">永豐商業銀行(南台中分行)</span></div>
+            <div class="info-row"><b>行庫代號</b><span contenteditable="true">807</span></div>
+            <div class="info-row"><b>帳號</b><span contenteditable="true">0380180 0183399</span></div>
+          </div>
+          <div class="info-box">
+            <h2>聯絡資訊</h2>
+            <div class="info-row"><b>Email</b><span contenteditable="true">wtxg@hourjungle.com</span></div>
+            <div class="info-row"><b>電話</b><span contenteditable="true">04-23760282</span></div>
+            <div class="info-row"><b>說明</b><span contenteditable="true">匯款後請回傳憑證，以便進行確認。</span></div>
+          </div>
+        </section>
+
+        <section class="remarks-box">
+          <h2>備註</h2>
+          <div class="remarks-list">
+            <p contenteditable="true">1. 報價有效期間:即日起30天內。</p>
+            <p contenteditable="true">2. 獨家！威立方（V-CUBE）集團，指定合作夥伴Ｅ樂堂企業內訓系統會員免費獨享。</p>
+            <p contenteditable="true">3. 超過百間以上蝦皮店家登記指定選擇hourjungle，可登記使用免用統一發票 (限無店面零售業)電商最最划算的選擇</p>
+            <p contenteditable="true">4. 全台灣唯一敢在合約內註明如因我方因素主關機關不予核准，我們全額退費!</p>
+            <p contenteditable="true">5. 多位知名客戶阿里巴巴、UBER、唐吉軻德、arrow（全球五百大企業）指定選擇解決方案。</p>
+            <p contenteditable="true">6. 獨家!蝦皮商城免費健檢！提供金、物流、包材、bsmi、財稅法一站式解決方案。再送一年免費稅務諮詢</p>
+            <p contenteditable="true">7. 獨家！勞動部ＴＴＱＳ認證單位，不定期超過百種創業課程會員免費獨享</p>
+            <p contenteditable="true">8. 獨家經濟部中小企業處認證國際育成中心！</p>
+            <p contenteditable="true">9. 獨家！國科會科研平台輔導業師進駐</p>
+            <p contenteditable="true">10、有任何問題請洽詢公司信箱wtxg@hourjungle.com或電話04-23760282。</p>
+            <p contenteditable="true">本公司之報價不包含銀行匯款手續費，匯款後請閣下將匯款憑證回傳本公司，以便進行確認。</p>
+          </div>
+        </section>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const plans = {
+      fullDay: { label: "平日全天 09:00-18:00前", rate: 2000, unit: "元/日", quantityLabel: "天數", quantityUnit: "天", quantity: 1, mode: "day" },
+      dayHourly: { label: "平日小時計", rate: 380, unit: "元/小時", quantityLabel: "總時數", quantityUnit: "小時", quantity: 2, mode: "hourly" },
+      eveningHourly: { label: "晚上 18:00 後小時計", rate: 550, unit: "元/小時", quantityLabel: "總時數", quantityUnit: "小時", quantity: 2, mode: "hourly" },
+      custom: { label: "自訂金額", rate: 0, unit: "元", quantityLabel: "數量", quantityUnit: "", quantity: 1, mode: "day" }
+    };
+
+    const hourlyRates = {
+      dayHourly: { label: "平380/H", rate: 380 },
+      eveningHourly: { label: "晚550/H", rate: 550 },
+      customHourly: { label: "自訂/時", rate: 0 }
+    };
+
+    const body = document.querySelector("#quoteBody");
+    const addDateButtons = [document.querySelector("#addDateButton"), document.querySelector("#addDateButtonBottom")];
+    const printButtons = [document.querySelector("#printButton"), document.querySelector("#printButtonBottom")];
+
+    const parseNumber = (value) => {
+      const normalized = String(value || "").replace(/,/g, "").replace(/[^\d.-]/g, "");
+      const number = Number(normalized);
+      return Number.isFinite(number) ? number : 0;
+    };
+
+    const formatNumber = (number) => Math.round(number).toLocaleString("en-US");
+
+    const currentPlan = (row) => {
+      const key = row.querySelector("[data-field='plan']").value;
+      return plans[key] || plans.fullDay;
+    };
+
+    const createDetailLine = ({ period = "", hours = "", rateKey = "dayHourly", rate } = {}) => {
+      const selectedRate = hourlyRates[rateKey] || hourlyRates.dayHourly;
+      const line = document.createElement("div");
+      line.className = "detail-line";
+      line.innerHTML = `
+        <input type="text" data-detail-period value="${period}" placeholder="例：7/15 14:00-16:00">
+        <div class="rate-cell">
+          <select data-detail-rate-key>
+            ${Object.entries(hourlyRates).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join("")}
+          </select>
+          <input type="text" inputmode="numeric" data-detail-custom-rate placeholder="單價" value="">
+        </div>
+        <input type="text" inputmode="numeric" data-detail-hours value="${hours === "" ? "" : formatNumber(hours)}" placeholder="2">
+        <button class="detail-remove" type="button" title="刪除此時段">×</button>
+      `;
+      line.querySelector("[data-detail-rate-key]").value = rateKey;
+      const customRateInput = line.querySelector("[data-detail-custom-rate]");
+      if (rateKey === "customHourly" && rate) customRateInput.value = formatNumber(rate);
+      const syncDetailRate = (focusCustom = false) => {
+        const selectedKey = line.querySelector("[data-detail-rate-key]").value;
+        const isCustom = selectedKey === "customHourly";
+        customRateInput.hidden = !isCustom;
+        if (isCustom) {
+          line.dataset.detailRate = String(Math.max(parseNumber(customRateInput.value), 0));
+          if (focusCustom) customRateInput.focus();
+        } else {
+          const nextRate = hourlyRates[selectedKey] || hourlyRates.dayHourly;
+          line.dataset.detailRate = String(nextRate.rate);
+        }
+      };
+      syncDetailRate(false);
+      line.querySelector("[data-detail-rate-key]").addEventListener("change", () => {
+        syncDetailRate(true);
+        calculate();
+      });
+      line.querySelectorAll("input").forEach((input) => input.addEventListener("input", () => {
+        syncDetailRate(false);
+        calculate();
+      }));
+      line.querySelector(".detail-remove").addEventListener("click", () => {
+        const list = line.closest("[data-detail-list]");
+        if (list.querySelectorAll(".detail-line").length <= 1) {
+          line.querySelector("[data-detail-period]").value = "";
+          line.querySelector("[data-detail-hours]").value = "";
+          customRateInput.value = "";
+          syncDetailRate(false);
+        } else {
+          line.remove();
+        }
+        calculate();
+      });
+      return line;
+    };
+
+    const addDetailLine = (row, data) => {
+      const list = row.querySelector("[data-detail-list]");
+      const line = createDetailLine(data);
+      list.appendChild(line);
+      calculate();
+      return line;
+    };
+
+    const setMode = (row, plan) => {
+      const dayFields = row.querySelector("[data-day-fields]");
+      const hourlyFields = row.querySelector("[data-hourly-fields]");
+      const quantityInput = row.querySelector("[data-field='quantity']");
+      const isHourly = plan.mode === "hourly";
+      dayFields.hidden = isHourly;
+      hourlyFields.hidden = !isHourly;
+      row.querySelectorAll("[data-quantity-label]").forEach((label) => {
+        label.textContent = plan.quantityLabel;
+      });
+      row.querySelectorAll("[data-quantity-unit]").forEach((unit) => {
+        unit.textContent = plan.quantityUnit;
+      });
+      row.querySelector("[data-rate-unit]").textContent = plan.unit;
+      if (isHourly) {
+        const list = row.querySelector("[data-detail-list]");
+        if (!list.querySelector(".detail-line")) {
+          addDetailLine(row, { period: "", hours: "" });
+        }
+        quantityInput.readOnly = true;
+      } else {
+        quantityInput.readOnly = false;
+      }
+    };
+
+    const calculate = () => {
+      let total = 0;
+      body.querySelectorAll(".meeting-row").forEach((row) => {
+        const plan = currentPlan(row);
+        setMode(row, plan);
+        const rateInput = row.querySelector("[data-field='rate']");
+        const rate = Math.max(parseNumber(rateInput.value), 0);
+        let quantity = Math.max(parseNumber(row.querySelector("[data-field='quantity']").value), 0);
+        let subtotal = 0;
+        if (plan.mode === "hourly") {
+          const detailLines = [...row.querySelectorAll(".detail-line")];
+          const activeLines = detailLines.filter((line) => {
+            const period = line.querySelector("[data-detail-period]").value.trim();
+            line.dataset.emptyDetail = period ? "false" : "true";
+            return Boolean(period);
+          });
+          quantity = detailLines.reduce((sum, line) => (
+            line.dataset.emptyDetail === "true" ? sum :
+            sum + Math.max(parseNumber(line.querySelector("[data-detail-hours]").value), 0)
+          ), 0);
+          subtotal = activeLines.reduce((sum, line) => {
+            const hours = Math.max(parseNumber(line.querySelector("[data-detail-hours]").value), 0);
+            const detailRate = Math.max(parseNumber(line.dataset.detailRate), 0);
+            return sum + hours * detailRate;
+          }, 0);
+          row.querySelector("[data-field='quantity']").value = formatNumber(quantity);
+          rateInput.value = "明細計算";
+          rateInput.readOnly = true;
+          row.querySelector("[data-rate-label]").textContent = "計價";
+          row.querySelector("[data-rate-unit]").textContent = "";
+        } else {
+          subtotal = quantity * rate;
+          rateInput.readOnly = false;
+          row.querySelector("[data-rate-label]").textContent = "單價";
+        }
+        row.querySelector("[data-field='quantity-copy']").textContent = formatNumber(quantity);
+        row.querySelector("[data-field='subtotal']").textContent = formatNumber(subtotal);
+        total += subtotal;
+      });
+      document.querySelector("[data-total]").textContent = formatNumber(total);
+    };
+
+    const renumberRows = () => {
+      const rows = body.querySelectorAll(".meeting-row");
+      rows.forEach((row, index) => {
+        row.querySelector("[data-row-number]").textContent = String(index + 1);
+      });
+      const reachedLimit = rows.length >= 2;
+      addDateButtons.forEach((button) => {
+        button.disabled = reachedLimit;
+        button.title = reachedLimit ? "最多新增 2 格" : "新增完整報價格";
+      });
+    };
+
+    const resetMeetingRow = (row) => {
+      row.querySelector("[data-field='plan']").value = "fullDay";
+      row.querySelector("[data-field='dateTime']").value = "";
+      row.querySelector("[data-field='quantity']").value = "1";
+      row.querySelector("[data-field='rate']").value = "2,000";
+      row.querySelector("[data-detail-list]").innerHTML = "";
+      calculate();
+    };
+
+    const bindRow = (row) => {
+      const planSelect = row.querySelector("[data-field='plan']");
+      planSelect.addEventListener("change", () => {
+        const plan = currentPlan(row);
+        row.querySelector("[data-field='rate']").value = formatNumber(plan.rate);
+        if (plan.mode === "hourly") {
+          const list = row.querySelector("[data-detail-list]");
+          if (!list.querySelector(".detail-line")) addDetailLine(row, { hours: "" });
+        } else {
+          row.querySelector("[data-field='quantity']").value = formatNumber(plan.quantity);
+        }
+        calculate();
+      });
+      row.querySelectorAll("input").forEach((input) => input.addEventListener("input", calculate));
+      row.querySelector("[data-add-detail]").addEventListener("click", () => {
+        const line = addDetailLine(row, { period: "", hours: "" });
+        line.querySelector("[data-detail-period]").focus();
+      });
+      row.querySelector("[data-delete-row]").addEventListener("click", () => {
+        if (body.querySelectorAll(".meeting-row").length === 1) {
+          resetMeetingRow(row);
+          row.querySelector("[data-field='dateTime']").focus();
+          return;
+        }
+        row.remove();
+        renumberRows();
+        calculate();
+      });
+    };
+
+    const createMeetingRow = ({ dateTime, planKey = "fullDay", quantity, rate, details = [] } = {}) => {
+      const plan = plans[planKey] || plans.fullDay;
+      const row = document.createElement("tr");
+      row.className = "meeting-row";
+      row.innerHTML = `
+        <td>
+          <div class="meeting-item">
+            <div class="row-number">
+              <span data-row-number></span>
+              <button class="delete-row" type="button" data-delete-row title="刪除此項">×</button>
+            </div>
+            <div class="meeting-fields">
+              <div class="field">
+                <label>方案</label>
+                <select data-field="plan">
+                  ${Object.entries(plans).map(([key, item]) => `<option value="${key}">${item.label}</option>`).join("")}
+                </select>
+              </div>
+              <div class="field">
+                <label><span data-quantity-label>${plan.quantityLabel}</span></label>
+                <input type="text" inputmode="numeric" data-field="quantity" value="${formatNumber(quantity ?? plan.quantity)}">
+              </div>
+              <div class="mode-fields" data-day-fields>
+                <div class="field wide">
+                  <label>使用日期</label>
+                  <input type="text" data-field="dateTime" value="${dateTime || ""}" placeholder="例：2026/07/05、7/15、8/4">
+                </div>
+              </div>
+              <div class="mode-fields" data-hourly-fields hidden>
+                <div class="detail-box">
+                  <div class="detail-head">
+                    <span>使用日期與時段</span>
+                    <span>計價</span>
+                    <span>小時</span>
+                    <span></span>
+                  </div>
+                  <div data-detail-list></div>
+                  <button class="detail-add" type="button" data-add-detail>新增日期 / 時段</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="amount-panel">
+            <div class="amount-line">
+              <span data-rate-label>單價</span>
+              <span class="unit-wrap">
+                <input type="text" inputmode="numeric" data-field="rate" value="${formatNumber(rate ?? plan.rate)}">
+                <span data-rate-unit>${plan.unit}</span>
+              </span>
+            </div>
+            <div class="amount-line">
+              <span data-quantity-label>${plan.quantityLabel}</span>
+              <span><span data-field="quantity-copy">${formatNumber(quantity ?? plan.quantity)}</span> <span data-quantity-unit>${plan.quantityUnit}</span></span>
+            </div>
+            <div class="amount-line subtotal">
+              <span>小計</span>
+              <span data-field="subtotal">0</span>
+            </div>
+          </div>
+        </td>
+      `;
+      row.querySelector("[data-field='plan']").value = planKey;
+      bindRow(row);
+      details.forEach((detail) => addDetailLine(row, detail));
+      return row;
+    };
+
+    const createTotalRows = () => {
+      const summary = document.createElement("tr");
+      summary.className = "summary-row";
+      summary.innerHTML = `<td>本期請款總計</td><td data-total>0</td>`;
+      const note = document.createElement("tr");
+      note.className = "note-row";
+      note.innerHTML = `<td colspan="2">說明：實際使用日期與時段依預約確認為準；如日期或時段調整，請以雙方確認內容為準。</td>`;
+      body.append(summary, note);
+    };
+
+    const insertMeetingRow = (data) => {
+      const totalRow = body.querySelector(".summary-row");
+      const row = createMeetingRow(data);
+      body.insertBefore(row, totalRow);
+      renumberRows();
+      calculate();
+      return row;
+    };
+
+    const addDateOrTime = () => {
+      if (body.querySelectorAll(".meeting-row").length >= 2) return;
+      const row = insertMeetingRow({
+        planKey: "fullDay",
+        dateTime: "",
+        quantity: 1,
+        rate: 2000
+      });
+      row.querySelector("[data-field='dateTime']").focus();
+    };
+
+    const init = () => {
+      createTotalRows();
+      insertMeetingRow({
+        planKey: "fullDay",
+        dateTime: "",
+        quantity: 1,
+        rate: 2000
+      });
+      addDateButtons.forEach((button) => button.addEventListener("click", addDateOrTime));
+      printButtons.forEach((button) => button.addEventListener("click", () => window.print()));
+      calculate();
+    };
+
+    init();
+  </script>
+</body>
+</html>
