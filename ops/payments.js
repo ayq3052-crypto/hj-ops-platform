@@ -68,6 +68,7 @@ let crmCheckState = {
 };
 let crmAutoLookupTimer = null;
 let yearActionLocked = false;
+let renewalSmartFillInFlight = false;
 let yearActionTimer = null;
 let yearBackfillTimer = null;
 const crmCache = {};
@@ -75,7 +76,7 @@ const webCrmPaymentBridgeKey = "hj-crm-payment-bridge-v1";
 const webCrmStorageKey = "hj-crm-clean-v5-data-repair";
 const suppressedPaymentRowsKey = "hjPaymentSuppressedRowsV1";
 const paymentBackfillStateKey = "hjPaymentBackfillStateV1";
-const paymentBackfillVersion = "20260716-renewal-history-2";
+const paymentBackfillVersion = "20260717-renewal-history-3";
 const paymentRowsCache = new Map();
 let suppressedPaymentRowsCache = null;
 
@@ -466,7 +467,7 @@ function crmSectionForForm(cycle, company) {
 function sameCustomerIdentity(row, target) {
   const rowId = normalizeCustomerId(row?.id).toUpperCase();
   const targetId = normalizeCustomerId(target?.id).toUpperCase();
-  if (rowId && targetId && rowId === targetId) return true;
+  if (rowId && targetId) return rowId === targetId;
   const rowCompany = normalizeLoose(row?.company);
   const targetCompany = normalizeLoose(target?.company);
   return Boolean(rowCompany && targetCompany && rowCompany === targetCompany);
@@ -789,8 +790,8 @@ function rowFromRenewalCrm(item, previousRow) {
     name: String(item?.姓名 || previousRow.name || "").trim(),
     company,
     cycle,
-    start: String(item?.起始日期 || previousRow.start || "").trim(),
-    end: String(item?.合約到期日 || previousRow.end || "").trim(),
+    start: String(item?.起始日期 || "").trim(),
+    end: String(item?.合約到期日 || "").trim(),
     price: normalizeMonthlyPrice(item?.金額 || previousRow.price || ""),
     pricePlan: String(item?.階段金額 || previousRow.pricePlan || "").trim(),
     paidDate: "",
@@ -1639,42 +1640,70 @@ function renderRowBasics() {
 }
 
 async function smartFillRenewalFromCrm() {
-  if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return;
+  if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return false;
+  if (renewalSmartFillInFlight) {
+    showToast("續約資料正在帶入，請稍候");
+    return false;
+  }
   const currentRow = paymentRows[selectedRowIndex];
   if (!isContractConfirmationRow(currentRow)) {
     showToast("這筆不是合約到期確認列");
-    return;
+    return false;
   }
 
+  const targetVenue = activeVenue;
+  const targetMonth = activeMonth;
+  const targetYear = activeYear;
+  const targetRowKey = currentRow._rowKey;
+
+  renewalSmartFillInFlight = true;
   showToast("正在讀取 CRM 續約資料");
   try {
-    const rows = await fetchCrmRows(activeVenue);
+    const rows = await fetchCrmRows(targetVenue);
+
+    if (activeVenue !== targetVenue || activeMonth !== targetMonth || activeYear !== targetYear) {
+      showToast("畫面已切換，本次續約帶入已取消");
+      return false;
+    }
+
     const match = findRenewalCrmMatch(rows, currentRow);
     if (!match) {
       showToast("CRM 尚未找到下一期資料，請先在新 CRM 建好續約資料");
-      return;
+      return false;
+    }
+
+    if (!validCompleteRenewalPeriod(match)) {
+      showToast("CRM 續約日期不完整或不正確，請先回 CRM 修正");
+      return false;
     }
 
     const nextRow = rowFromRenewalCrm(match, currentRow);
     const venueError = venueIdErrorMessage(nextRow.id);
     if (venueError) {
       showToast(venueError);
-      return;
+      return false;
     }
 
     if (!nextRow.id || !nextRow.company || !nextRow.start || !nextRow.end || !nextRow.price) {
       showToast("CRM 續約資料未填完整，請先回 CRM 補齊");
-      return;
+      return false;
     }
 
-    const currentKey = currentRow._rowKey;
-    const removedOldFutureRows = removeGeneratedFutureRowsFor(currentRow);
-    const suppressedOldBaseRows = suppressFutureBaseRowsFor(currentRow);
-    const suppressedOldGeneratedRows = suppressFutureGeneratedRowsFor(currentRow);
-    paymentRows = removeSameMonthRenewalDuplicates(paymentRows, activeVenue, activeMonth, activeYear);
-    const source = generationSourceForRow(nextRow, activeMonth, activeYear);
-    const generation = regenerateFuturePaymentsForRow(nextRow, activeVenue, source.month, source.year, { sourceKind: "manual" });
-    const historyIndex = paymentRows.findIndex((row) => row._rowKey === currentKey);
+    paymentRows = loadPaymentRows(targetVenue, targetMonth, targetYear);
+    const currentIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
+    if (currentIndex < 0) {
+      showToast("原繳費列已變更，本次續約帶入已取消");
+      return false;
+    }
+
+    const freshCurrentRow = paymentRows[currentIndex];
+    const removedOldFutureRows = removeGeneratedFutureRowsFor(freshCurrentRow, targetVenue, targetMonth, targetYear);
+    const suppressedOldBaseRows = suppressFutureBaseRowsFor(freshCurrentRow, false, targetVenue, targetMonth, targetYear);
+    const suppressedOldGeneratedRows = suppressFutureGeneratedRowsFor(freshCurrentRow, false, targetVenue, targetMonth, targetYear);
+    paymentRows = removeSameMonthRenewalDuplicates(paymentRows, targetVenue, targetMonth, targetYear);
+    const source = generationSourceForRow(nextRow, targetMonth, targetYear);
+    const generation = regenerateFuturePaymentsForRow(nextRow, targetVenue, source.month, source.year, { sourceKind: "manual" });
+    const historyIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
     if (historyIndex >= 0) {
       paymentRows[historyIndex] = markRenewalImportedHistoryRow(
         paymentRows[historyIndex],
@@ -1683,9 +1712,9 @@ async function smartFillRenewalFromCrm() {
       );
     }
     paymentRows = normalizeSectionGroups(paymentRows);
-    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === currentKey);
+    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
     rowBasicsOpen = false;
-    savePaymentRows();
+    saveRowsFor(targetVenue, targetMonth, paymentRows, targetYear);
     renderAll();
 
     const clearedCount = removedOldFutureRows + suppressedOldBaseRows + suppressedOldGeneratedRows;
@@ -1694,8 +1723,12 @@ async function smartFillRenewalFromCrm() {
     if (clearedCount) toast += `，已清掉 ${clearedCount} 筆舊循環`;
     if (generation.stoppedForContract) toast += "，到期前會再提醒續約";
     showToast(toast);
+    return true;
   } catch (error) {
     showToast(`${error.message || "CRM 讀取失敗"}，先不要續約寫入`);
+    return false;
+  } finally {
+    renewalSmartFillInFlight = false;
   }
 }
 
@@ -2112,6 +2145,36 @@ function normalizeRocDateParts(value) {
   return { rocYear, monthNumber, day };
 }
 
+function parseCompleteValidRocDate(value) {
+  const text = normalizeAscii(value).trim();
+  const separated = text.match(/^(\d{2,4})\s*[\/.-]\s*(\d{1,2})\s*[\/.-]\s*(\d{1,2})$/);
+  const chinese = text.match(/^(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/);
+  const match = separated || chinese;
+  if (!match) return null;
+
+  const rocYear = Number(match[1]);
+  const monthNumber = Number(match[2]);
+  const day = Number(match[3]);
+  if (!rocYear || monthNumber < 1 || monthNumber > 12 || day < 1) return null;
+
+  const westernYear = rocYear + 1911;
+  const maxDay = new Date(Date.UTC(westernYear, monthNumber, 0)).getUTCDate();
+  if (day > maxDay) return null;
+
+  return {
+    rocYear,
+    monthNumber,
+    day,
+    absoluteDay: Math.floor(Date.UTC(westernYear, monthNumber - 1, day) / 86400000),
+  };
+}
+
+function validCompleteRenewalPeriod(item) {
+  const start = parseCompleteValidRocDate(item?.起始日期);
+  const end = parseCompleteValidRocDate(item?.合約到期日);
+  return Boolean(start && end && start.absoluteDay <= end.absoluteDay);
+}
+
 function addYearsToRocDateIndex(value, years) {
   const parts = normalizeRocDateParts(value);
   if (!parts || !Number.isInteger(years)) return null;
@@ -2240,7 +2303,10 @@ function generateFuturePaymentsForAddedCustomer(
   let guard = 0;
   const endIndex = parseMinguoMonthIndex(row?.end);
   const optionLimit = Number.isFinite(options.limitIndex) ? options.limitIndex : null;
-  const generationLimitIndex = endIndex ?? optionLimit ?? targetIndex;
+  const generationLimitIndex =
+    endIndex !== null && optionLimit !== null
+      ? Math.min(endIndex, optionLimit)
+      : endIndex ?? optionLimit ?? targetIndex;
 
   while (targetIndex <= generationLimitIndex && guard < 600) {
     guard += 1;
@@ -2646,17 +2712,17 @@ function isManualOrGeneratedRow(row, venue = activeVenue, month = activeMonth, y
   return !baseRowsFor(venue, month, year).some((baseRow) => sameCustomerPeriod(baseRow, row));
 }
 
-function removeGeneratedFutureRowsFor(row) {
-  const sourceIndex = sheetMonthAbsoluteIndex(activeMonth, activeYear);
+function removeGeneratedFutureRowsFor(row, venue = activeVenue, month = activeMonth, year = activeYear) {
+  const sourceIndex = sheetMonthAbsoluteIndex(month, year);
   if (sourceIndex === null) return 0;
 
   let removed = 0;
-  getYears(activeVenue).forEach((year) => {
-    monthLabels.forEach((month) => {
-      const monthIndex = sheetMonthAbsoluteIndex(month, year);
+  getYears(venue).forEach((targetYear) => {
+    monthLabels.forEach((targetMonth) => {
+      const monthIndex = sheetMonthAbsoluteIndex(targetMonth, targetYear);
       if (monthIndex === null || monthIndex <= sourceIndex) return;
 
-      const rows = loadPaymentRows(activeVenue, month, year);
+      const rows = loadPaymentRows(venue, targetMonth, targetYear);
       const kept = rows.filter((futureRow) => {
         const isGeneratedFromThisRow = sameCustomerPeriod(futureRow, row) && isAutoGeneratedPaymentRow(futureRow);
         if (isGeneratedFromThisRow) removed += 1;
@@ -2664,7 +2730,7 @@ function removeGeneratedFutureRowsFor(row) {
       });
 
       if (kept.length !== rows.length) {
-        saveRowsFor(activeVenue, month, kept, year);
+        saveRowsFor(venue, targetMonth, kept, targetYear);
       }
     });
   });
@@ -2672,19 +2738,19 @@ function removeGeneratedFutureRowsFor(row) {
   return removed;
 }
 
-function suppressFutureBaseRowsFor(row, includeCurrent = false) {
-  const sourceIndex = sheetMonthAbsoluteIndex(activeMonth, activeYear);
+function suppressFutureBaseRowsFor(row, includeCurrent = false, venue = activeVenue, month = activeMonth, year = activeYear) {
+  const sourceIndex = sheetMonthAbsoluteIndex(month, year);
   if (sourceIndex === null) return 0;
 
   const suppressed = readSuppressedPaymentRows();
   let added = 0;
-  getYears(activeVenue).forEach((year) => {
-    monthLabels.forEach((month) => {
-      const monthIndex = sheetMonthAbsoluteIndex(month, year);
+  getYears(venue).forEach((targetYear) => {
+    monthLabels.forEach((targetMonth) => {
+      const monthIndex = sheetMonthAbsoluteIndex(targetMonth, targetYear);
       if (monthIndex === null || (includeCurrent ? monthIndex < sourceIndex : monthIndex <= sourceIndex)) return;
-      baseRowsFor(activeVenue, month, year).forEach((baseRow) => {
+      baseRowsFor(venue, targetMonth, targetYear).forEach((baseRow) => {
         if (!sameCustomerPeriod(baseRow, row)) return;
-        const key = suppressedRowKeyFor(baseRow, activeVenue, month, year);
+        const key = suppressedRowKeyFor(baseRow, venue, targetMonth, targetYear);
         if (suppressed.has(key)) return;
         suppressed.add(key);
         added += 1;

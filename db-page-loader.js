@@ -2,7 +2,7 @@
   const pageScripts = {
     crm: ["./app.js?v=20260713-crm-formal-save-1"],
     contracts: ["./contracts.js?v=20260709-contract-date-input-1"],
-    payments: ["./ops/payments.js?v=20260715-smart-import-repair-2"],
+    payments: ["./ops/payments.js?v=20260717-renewal-persistence-1"],
     drafts: ["./ops/drafts.js?v=20260708-draft-official-1"],
   };
 
@@ -65,9 +65,8 @@
       window.HJ_DB.clearLegacyLocalDataForDb();
       if (page !== "payments") window.HJ_DB.installLocalStorageSync();
       for (const script of pageScripts[page]) await loadScript(script);
-      if (page === "payments") {
-        window.setTimeout(() => window.HJ_DB.installLocalStorageSync(), 1200);
-      }
+      // Payments repairs its local working copy during bootstrap. Persist only after that setup is complete.
+      if (page === "payments") window.HJ_DB.installLocalStorageSync();
       hideStateSoon();
     } catch (error) {
       console.error(error);
