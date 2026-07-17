@@ -1029,6 +1029,48 @@ function paymentStorageKeyFor(venue = activeVenue, month = activeMonth, year = a
   return `hjPaymentRows${year}_${venue}_${month}_v1`;
 }
 
+function clonePaymentAuditRows(rows) {
+  if (typeof structuredClone === "function") return structuredClone(rows);
+  return JSON.parse(JSON.stringify(rows));
+}
+
+function paymentAuditRowsByMonth(venue = activeVenue, year = activeYear) {
+  const snapshot = {};
+  monthLabels.forEach((month) => {
+    let rows = window.hjImportedPaymentDataByYear?.[venue]?.[String(year)]?.[month] || [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(paymentStorageKeyFor(venue, month, year)) || "null");
+      if (Array.isArray(saved)) rows = saved;
+    } catch {
+      // The audit remains read-only and falls back to imported rows.
+    }
+    if (venue === activeVenue && Number(year) === Number(activeYear) && month === activeMonth) {
+      rows = paymentRows;
+    }
+    snapshot[month] = clonePaymentAuditRows(Array.isArray(rows) ? rows : []);
+  });
+  return snapshot;
+}
+
+function runPaymentAudit(trigger, options = {}) {
+  if (!window.HJPaymentAudit?.runFromPlatformGlobals) return null;
+  const venue = options.venue || activeVenue;
+  const year = Number(options.year || activeYear);
+  try {
+    return window.HJPaymentAudit.runFromPlatformGlobals({
+      trigger,
+      venue,
+      year,
+      crmRowsOverride: readCrmRowsSync(venue),
+      paymentRowsByMonthOverride: paymentAuditRowsByMonth(venue, year),
+      previousRowsByMonthOverride: paymentAuditRowsByMonth(venue, year - 1),
+    });
+  } catch (error) {
+    console.warn("Payment audit failed", error);
+    return null;
+  }
+}
+
 function saveRowsFor(venue, month, rows, year = activeYear) {
   ensurePaymentYearExists(venue, year);
   const baseRows = baseRowsFor(venue, month, year);
@@ -1656,6 +1698,8 @@ async function smartFillRenewalFromCrm() {
   const targetYear = activeYear;
   const targetRowKey = currentRow._rowKey;
 
+  runPaymentAudit("payment-smart-import-before", { venue: targetVenue, year: targetYear });
+
   renewalSmartFillInFlight = true;
   showToast("正在讀取 CRM 續約資料");
   try {
@@ -1716,6 +1760,7 @@ async function smartFillRenewalFromCrm() {
     rowBasicsOpen = false;
     saveRowsFor(targetVenue, targetMonth, paymentRows, targetYear);
     renderAll();
+    runPaymentAudit("payment-smart-import-after", { venue: targetVenue, year: targetYear });
 
     const clearedCount = removedOldFutureRows + suppressedOldBaseRows + suppressedOldGeneratedRows;
     let toast = `${nextRow.id} 原列保留，已從下一期帶入新循環`;
@@ -2915,7 +2960,7 @@ function renderYearSelect() {
   }
 }
 
-function switchYear(year, announce = false) {
+function switchYear(year, announce = false, auditTrigger = "payment-year-switch") {
   const normalized = normalizeYear(year);
   if (!getGlobalYears().includes(normalized)) return;
   setActiveYearForAllVenues(normalized);
@@ -2928,6 +2973,7 @@ function switchYear(year, announce = false) {
   resetCrmCheckState();
   resetSelectionState();
   renderAll();
+  venueKeys.forEach((venue) => runPaymentAudit(auditTrigger, { venue, year: activeYear }));
   if (announce) {
     lockYearAction();
     setYearActionState(`已轉到 ${activeYear}`);
@@ -2961,7 +3007,7 @@ function createNextYear() {
         { created: 0, labels: [] },
       );
     finishYearActionAfterMinimum(startedAt, () => {
-      switchYear(nextYear, false);
+      switchYear(nextYear, false, "payment-year-create");
     }, `已轉入 ${nextYear}`);
   }, yearGeneratingPaintDelayMs);
 }

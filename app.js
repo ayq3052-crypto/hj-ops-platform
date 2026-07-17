@@ -1371,6 +1371,26 @@ function validateCreatedId(nextId) {
   return "";
 }
 
+function runPaymentAudit(trigger, options = {}) {
+  if (!window.HJPaymentAudit?.runFromPlatformGlobals) return null;
+  const venue = options.venue || activeVenue;
+  const year = Number(options.year || activeYear);
+  const rows = options.crmRowsOverride || (venue === activeVenue && year === Number(activeYear)
+    ? crmRows
+    : getVenueRows(venue, year));
+  try {
+    return window.HJPaymentAudit.runFromPlatformGlobals({
+      trigger,
+      venue,
+      year,
+      crmRowsOverride: rows,
+    });
+  } catch (error) {
+    console.warn("Payment audit failed", error);
+    return null;
+  }
+}
+
 async function saveDraft() {
   if (!draftRow || !isEditing()) return;
   const nextId = (draftRow.id || "").trim();
@@ -1428,6 +1448,7 @@ async function saveDraft() {
   editMode = "view";
   persistCrmData();
   render();
+  runPaymentAudit("crm-save");
   setSaveState(`${activeYear} 已儲存正式資料`, "saved");
 }
 
@@ -1464,6 +1485,7 @@ async function moveCurrentFolder() {
   searchInput.value = "";
   persistCrmData();
   render();
+  runPaymentAudit("crm-folder-change");
   setSaveState(targetFolder === "ended" ? "已移到結束" : "已移回總表", "saved");
 }
 
@@ -1545,6 +1567,7 @@ function switchYear(year, announce = false) {
   searchInput.value = "";
   persistCrmData();
   render();
+  runPaymentAudit("crm-year-switch");
   if (announce) {
     lockYearAction();
     setYearActionState(`已切到 ${activeYear}`, "saved");
@@ -1582,6 +1605,13 @@ function createNextYear() {
     searchInput.value = "";
     persistCrmData();
     render();
+    Object.keys(crmData.venues || {}).forEach((venue) => {
+      runPaymentAudit("crm-year-create", {
+        venue,
+        year: activeYear,
+        crmRowsOverride: getVenueRows(venue, activeYear),
+      });
+    });
     setYearControlsLocked(false);
     setYearActionState(`已轉入 ${activeYear}`, "saved");
     setSaveState(`${activeYear} 兩館已轉入`, "saved");
