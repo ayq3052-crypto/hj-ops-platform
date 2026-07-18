@@ -344,11 +344,9 @@ function assertCurrentHistoryRow(rows, fixture) {
   assert.equal(row.paidDate, "TEST-PAID-DATE", `${fixture.id}: paid date must stay unchanged`);
   assert.equal(row.paidAmount, "TEST-PAID-AMOUNT", `${fixture.id}: paid amount must stay unchanged`);
   assert.equal(row.invoice, "TEST-INVOICE", `${fixture.id}: invoice must stay unchanged`);
-  assert.equal(row.renewalImported, true, `${fixture.id}: history row must record imported renewal`);
-  assert.equal(row.renewalPeriod.start, fixture.newStart, `${fixture.id}: CRM start belongs in renewalPeriod`);
-  assert.equal(row.renewalPeriod.end, fixture.newEnd, `${fixture.id}: CRM end belongs in renewalPeriod`);
-  assert.equal(row.renewalPeriod.cycle, fixture.cycle, `${fixture.id}: CRM cycle belongs in renewalPeriod`);
-  assert.equal(row.renewalPeriod.price, fixture.newPrice, `${fixture.id}: CRM price belongs in renewalPeriod`);
+  assert.equal(row.renewalProcessed, true, `${fixture.id}: history row must record that renewal was processed`);
+  assert.equal(row.renewalImported, false, `${fixture.id}: history row must not contain a hidden renewal period`);
+  assert.equal(row.renewalPeriod, null, `${fixture.id}: CRM renewal data must not be stored on the history row`);
   return row;
 }
 
@@ -831,6 +829,185 @@ assert.equal(
   JSON.stringify(loadRows(nonBillableContext, "huanrui", "6月", 2026)),
   nonBillableBefore,
   "nonbillable history must remain untouched",
+);
+
+function installCrmBridge(context, venue, year, rows) {
+  context.localStorage.setItem(
+    "hj-crm-payment-bridge-v1",
+    JSON.stringify({
+      venues: {
+        [venue]: {
+          years: {
+            [String(year)]: rows.map((row) => ({
+              id: row.id,
+              name: row.name,
+              companyName: row.company,
+              item: row.item,
+              cycle: row.cycle,
+              start: row.start,
+              end: row.end,
+              amount: row.amount,
+            })),
+          },
+        },
+      },
+    }),
+  );
+}
+
+const noCrmBackfillContext = createContext();
+setBaseRows(noCrmBackfillContext, "taichung", 2026, "1月", [
+  {
+    section: "營登", id: "TST-NO-CRM", name: "匿名無CRM", company: "匿名無CRM公司",
+    cycle: "Y", start: "114/01/01", end: "115/01/01", price: "1800/m", nextDate: "116/01",
+  },
+]);
+runPayments(noCrmBackfillContext);
+vm.runInContext(`backfillFuturePaymentsFromMonth("taichung", "1月", 2026, monthAbsoluteIndexFor(2027, 12))`, noCrmBackfillContext);
+assert.equal(
+  rowsById(loadRows(noCrmBackfillContext, "taichung", "1月", 2027), "TST-NO-CRM").length,
+  0,
+  "annual backfill must not guess from payment history when CRM is unavailable",
+);
+
+const explicitAfterEndContext = createContext();
+setBaseRows(explicitAfterEndContext, "taichung", 2026, "1月", [
+  {
+    section: "營登", id: "TST-269", name: "匿名代收", company: "匿名代收公司",
+    cycle: "Y", start: "115/01/01", end: "115/12/31", price: "1800/m", nextDate: "116/01",
+  },
+]);
+runPayments(explicitAfterEndContext);
+installCrmBridge(explicitAfterEndContext, "taichung", 2026, [
+  {
+    id: "TST-269", name: "匿名代收", company: "匿名代收公司", item: "代收信件",
+    cycle: "Y", start: "115/01/01", end: "115/12/31", amount: "1800/m",
+  },
+]);
+vm.runInContext(`backfillFuturePaymentsFromMonth("taichung", "1月", 2026, monthAbsoluteIndexFor(2027, 12))`, explicitAfterEndContext);
+const explicitAfterEndRows = rowsById(loadRows(explicitAfterEndContext, "taichung", "1月", 2027), "TST-269");
+assert.equal(explicitAfterEndRows.length, 1, "explicit next-payment evidence must create one due row after CRM end month");
+assert.equal(explicitAfterEndRows[0].section, "營登", "代收信件 must remain in the CRM service section");
+assert.equal(
+  vm.runInContext(`isContractConfirmationRow(${JSON.stringify(explicitAfterEndRows[0])}, "1月", 2027)`, explicitAfterEndContext),
+  true,
+  "the explicit due row after contract end must require renewal confirmation",
+);
+
+const prepaidBackfillContext = createContext();
+setBaseRows(prepaidBackfillContext, "taichung", 2026, "3月", [
+  {
+    section: "營登", id: "TST-206-BACKFILL", name: "匿名預繳", company: "匿名預繳公司",
+    cycle: "6M", start: "113/03/13", end: "115/03/13", price: "1650/m", nextDate: "117/03",
+  },
+]);
+runPayments(prepaidBackfillContext);
+installCrmBridge(prepaidBackfillContext, "taichung", 2026, [
+  {
+    id: "TST-206-BACKFILL", name: "匿名預繳", company: "匿名預繳公司", item: "營業登記",
+    cycle: "6M", start: "115/03/13", end: "117/03/13", amount: "1650/m",
+  },
+]);
+vm.runInContext(`backfillFuturePaymentsFromMonth("taichung", "3月", 2026, monthAbsoluteIndexFor(2028, 12))`, prepaidBackfillContext);
+assert.equal(rowsById(loadRows(prepaidBackfillContext, "taichung", "9月", 2026), "TST-206-BACKFILL").length, 0);
+assert.equal(rowsById(loadRows(prepaidBackfillContext, "taichung", "3月", 2027), "TST-206-BACKFILL").length, 0);
+assert.equal(
+  rowsById(loadRows(prepaidBackfillContext, "taichung", "3月", 2028), "TST-206-BACKFILL").length,
+  1,
+  "explicit prepaid next-payment month must override ordinary CRM cadence for the first generated row",
+);
+
+const authoritativeTimelineContext = createContext();
+setBaseRows(authoritativeTimelineContext, "taichung", 2026, "2月", [
+  {
+    section: "營登", id: "TST-AUTH", name: "匿名權威時間線", company: "匿名權威時間線公司",
+    cycle: "6M", start: "114/02/15", end: "116/02/15", price: "1800/m", nextDate: "115/08",
+  },
+]);
+setBaseRows(authoritativeTimelineContext, "taichung", 2026, "8月", [
+  {
+    section: "營登", id: "TST-AUTH", name: "匿名權威時間線", company: "匿名權威時間線公司",
+    cycle: "6M", start: "114/02/15", end: "116/02/15", price: "1800/m", nextDate: "116/02",
+  },
+]);
+runPayments(authoritativeTimelineContext);
+installCrmBridge(authoritativeTimelineContext, "taichung", 2026, [
+  {
+    id: "TST-AUTH", name: "匿名權威時間線", company: "匿名權威時間線公司", item: "營業登記",
+    cycle: "6M", start: "115/02/15", end: "117/02/15", amount: "1800/m",
+  },
+]);
+vm.runInContext(`backfillFuturePaymentsForVenue("taichung", 2026, 2027)`, authoritativeTimelineContext);
+assert.equal(
+  rowsById(loadRows(authoritativeTimelineContext, "taichung", "2月", 2027), "TST-AUTH").length,
+  1,
+  "annual backfill must select the latest explicit next-payment anchor once per customer",
+);
+assert.equal(
+  rowsById(loadRows(authoritativeTimelineContext, "taichung", "8月", 2026), "TST-AUTH").length,
+  1,
+  "annual backfill must not rewrite or duplicate the latest historical payment row",
+);
+vm.runInContext(`backfillFuturePaymentsForVenue("taichung", 2026, 2027)`, authoritativeTimelineContext);
+assert.equal(
+  rowsById(loadRows(authoritativeTimelineContext, "taichung", "2月", 2027), "TST-AUTH").length,
+  1,
+  "annual backfill must be idempotent when the same year is processed again",
+);
+
+const authoritativePrepaidContext = createContext();
+setBaseRows(authoritativePrepaidContext, "taichung", 2026, "3月", [
+  {
+    section: "營登", id: "TST-AUTH-PREPAID", name: "匿名跨年預繳", company: "匿名跨年預繳公司",
+    cycle: "6M", start: "113/03/13", end: "115/03/13", price: "1650/m", nextDate: "117/03",
+  },
+]);
+runPayments(authoritativePrepaidContext);
+installCrmBridge(authoritativePrepaidContext, "taichung", 2026, [
+  {
+    id: "TST-AUTH-PREPAID", name: "匿名跨年預繳", company: "匿名跨年預繳公司", item: "營業登記",
+    cycle: "6M", start: "115/03/13", end: "117/03/13", amount: "1650/m",
+  },
+]);
+vm.runInContext(`backfillFuturePaymentsForVenue("taichung", 2026, 2027)`, authoritativePrepaidContext);
+assert.equal(rowsById(loadRows(authoritativePrepaidContext, "taichung", "3月", 2027), "TST-AUTH-PREPAID").length, 0);
+assert.equal(rowsById(loadRows(authoritativePrepaidContext, "taichung", "9月", 2027), "TST-AUTH-PREPAID").length, 0);
+
+const reopenedYearContext = createContext();
+setBaseRows(reopenedYearContext, "taichung", 2026, "1月", [
+  {
+    section: "營登", id: "TST-REOPEN", name: "匿名年度重跑", company: "匿名年度重跑公司",
+    cycle: "Y", start: "114/01/10", end: "115/01/10", price: "1800/m", nextDate: "116/01",
+  },
+]);
+runPayments(reopenedYearContext);
+installCrmBridge(reopenedYearContext, "taichung", 2026, [
+  {
+    id: "TST-REOPEN", name: "匿名年度重跑", company: "匿名年度重跑公司", item: "營業登記",
+    cycle: "Y", start: "115/01/10", end: "116/01/10", amount: "1800/m",
+  },
+]);
+vm.runInContext(`
+  localStorage.setItem(paymentBackfillStateKey, JSON.stringify({
+    [paymentBackfillVersion + ":2027"]: true,
+  }));
+  scheduleInitialBackfill(2027);
+`, reopenedYearContext);
+assert.equal(
+  rowsById(loadRows(reopenedYearContext, "taichung", "1月", 2027), "TST-REOPEN").length,
+  1,
+  "reopening a previously processed year must rerun idempotent backfill after CRM changes",
+);
+vm.runInContext(`scheduleInitialBackfill(2027)`, reopenedYearContext);
+assert.equal(
+  rowsById(loadRows(reopenedYearContext, "taichung", "1月", 2027), "TST-REOPEN").length,
+  1,
+  "rerunning a reopened year must not duplicate the generated payment row",
+);
+assert.equal(
+  rowsById(loadRows(reopenedYearContext, "taichung", "1月", 2026), "TST-REOPEN").length,
+  1,
+  "rerunning a reopened year must not rewrite the historical payment row",
 );
 
 const loaderSource = fs.readFileSync(new URL("../db-page-loader.js", import.meta.url), "utf8");
