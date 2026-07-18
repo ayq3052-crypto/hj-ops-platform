@@ -444,9 +444,9 @@ function sectionFromCrmServiceAndCycle(service, cycle, company) {
   const normalizedCycle = normalizeCycleValue(cycle);
   if (serviceText.includes("辦公室")) return "辦公室";
   if (serviceText.includes("自由座")) return "自由座";
-  if (isAnnualBillingCycle(cycle)) return "年繳 / 2Y";
   if (serviceText.includes("代收信件")) return "營登";
   if (serviceText.includes("營")) return "營登";
+  if (isAnnualBillingCycle(cycle)) return "年繳 / 2Y";
   return normalizedCycle ? sectionForNewCustomer(normalizedCycle, company) : "";
 }
 
@@ -565,6 +565,7 @@ function renewalPeriodSnapshot(row) {
   if (!row) return null;
   return {
     section: row.section || "",
+    service: row.service || "",
     id: row.id || "",
     name: row.name || "",
     company: row.company || "",
@@ -583,7 +584,9 @@ function markRenewalImportedHistoryRow(row, renewalRow, nextDate = "") {
     manualStatus: "",
     renewalImported: true,
     renewalPeriod: renewalPeriodSnapshot(renewalRow) || row.renewalPeriod || null,
-    nextDate: nextDate || row.nextDate || "",
+    // The historical row is evidence of what was collected. Its explicit next
+    // due month must survive renewal import unchanged.
+    nextDate: row.nextDate || "",
     note: stripContractConfirmationNote(row.note),
   };
 }
@@ -784,9 +787,11 @@ function rowFromRenewalCrm(item, previousRow) {
   const cycle = normalizeCycleForSelect(item?.繳費方式 || previousRow.cycle);
   const company = crmCompanyName(item) || previousRow.company;
   const section = serviceSectionFromCrm(item, cycle, company) || sectionForNewCustomer(cycle, company) || previousRow.section;
+  const service = String(item?.項目 || item?.服務項目 || previousRow.service || "").trim();
   return {
     ...previousRow,
     section,
+    service,
     name: String(item?.姓名 || previousRow.name || "").trim(),
     company,
     cycle,
@@ -966,9 +971,6 @@ function normalizeRowSemantics(row, venue = activeVenue) {
   }
   if (row.previousSection === "代收信件") {
     row.previousSection = "營登";
-  }
-  if (row.section === "營登" && isAnnualBillingCycle(row.cycle)) {
-    row.section = "年繳 / 2Y";
   }
   const overrideSection = serviceSectionOverride(row, venue);
   if (overrideSection) {
@@ -1746,7 +1748,10 @@ async function smartFillRenewalFromCrm() {
     const suppressedOldGeneratedRows = suppressFutureGeneratedRowsFor(freshCurrentRow, false, targetVenue, targetMonth, targetYear);
     paymentRows = removeSameMonthRenewalDuplicates(paymentRows, targetVenue, targetMonth, targetYear);
     const source = generationSourceForRow(nextRow, targetMonth, targetYear);
-    const generation = regenerateFuturePaymentsForRow(nextRow, targetVenue, source.month, source.year, { sourceKind: "manual" });
+    const generation = regenerateFuturePaymentsForRow(nextRow, targetVenue, source.month, source.year, {
+      sourceKind: "manual",
+      firstDueDate: freshCurrentRow.nextDate || "",
+    });
     const historyIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
     if (historyIndex >= 0) {
       paymentRows[historyIndex] = markRenewalImportedHistoryRow(
@@ -2341,7 +2346,11 @@ function generateFuturePaymentsForAddedCustomer(
     return { created: 0, nextDate: "", stoppedForContract: false };
   }
 
-  let targetIndex = currentMonthIndex + cycleMonths;
+  const explicitFirstDueIndex = parseMinguoMonthIndex(options.firstDueDate);
+  let targetIndex =
+    explicitFirstDueIndex !== null && explicitFirstDueIndex > currentMonthIndex
+      ? explicitFirstDueIndex
+      : currentMonthIndex + cycleMonths;
   let created = 0;
   let firstNextDate = "";
   let stoppedForContract = false;
@@ -2507,7 +2516,10 @@ function addCustomerToCurrentMonth() {
     const suppressedBase = suppressFutureBaseRowsFor(renewalSourceRow);
     const suppressedGenerated = suppressFutureGeneratedRowsFor(renewalSourceRow);
     const source = generationSourceForRow(newRow, activeMonth, activeYear);
-    const generation = regenerateFuturePaymentsForRow(newRow, activeVenue, source.month, source.year, { sourceKind: "manual" });
+    const generation = regenerateFuturePaymentsForRow(newRow, activeVenue, source.month, source.year, {
+      sourceKind: "manual",
+      firstDueDate: renewalSourceRow.nextDate || "",
+    });
 
     const historyIndex = paymentRows.findIndex((row) => row._rowKey === sourceKey);
     if (historyIndex >= 0) {
@@ -2627,16 +2639,12 @@ function backfillFuturePaymentsFromMonth(venue, month, year, limitIndex = null) 
     } else if (!isBackfillSourceRow(row)) {
       return;
     }
-    const beforeNextDate = row.nextDate;
     const generation = generateFuturePaymentsForAddedCustomer(sourceRow, venue, sourceMonth, sourceYear, {
       sourceKind: "existing",
       limitIndex,
+      firstDueDate: row.nextDate || "",
     });
     created += generation.created;
-    if (row.renewalImported && generation.nextDate && row.nextDate !== generation.nextDate) {
-      row.nextDate = generation.nextDate;
-    }
-    if (row.nextDate !== beforeNextDate) touched = true;
   });
 
   if (touched) {

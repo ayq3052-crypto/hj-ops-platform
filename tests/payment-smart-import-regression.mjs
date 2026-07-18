@@ -233,6 +233,8 @@ function addYears(date, years) {
 
 function sectionFor(service, cycle) {
   if (service === "辦公室") return "辦公室";
+  if (service === "自由座") return "自由座";
+  if (service === "營業登記" || service === "營登" || service === "代收信件") return "營登";
   return ["Y", "2Y", "3Y"].includes(cycle) ? "年繳 / 2Y" : "營登";
 }
 
@@ -453,6 +455,117 @@ async function verifyFixture(fixture) {
 for (const fixture of fixtures) {
   await verifyFixture(fixture);
 }
+
+async function verifyExplicitFirstDueCase({
+  label,
+  venue = "taichung",
+  sourceYear = 2026,
+  sourceMonth,
+  id,
+  oldRow,
+  crmRow,
+  expectedMonths,
+}) {
+  const context = createContext();
+  setBaseRows(context, venue, sourceYear, `${sourceMonth}月`, [
+    {
+      ...oldRow,
+      id,
+      paidDate: "TEST-PAID-DATE",
+      paidAmount: "TEST-PAID-AMOUNT",
+      invoice: "TEST-INVOICE",
+      note: "合約到期，先確認續約",
+    },
+  ]);
+  runPayments(context);
+
+  const beforeHistory = rowsById(loadRows(context, venue, `${sourceMonth}月`, sourceYear), id)[0];
+  await runSmartImport(context, {
+    venue,
+    month: `${sourceMonth}月`,
+    year: sourceYear,
+    id,
+    crmRow: { 編號: id, ...crmRow },
+  });
+
+  const afterHistoryRows = rowsById(loadRows(context, venue, `${sourceMonth}月`, sourceYear), id);
+  assert.equal(afterHistoryRows.length, 1, `${label}: historical month must keep exactly one row`);
+  const afterHistory = afterHistoryRows[0];
+  for (const field of ["section", "name", "company", "cycle", "start", "end", "price", "paidDate", "paidAmount", "nextDate", "invoice"]) {
+    assert.equal(afterHistory[field], beforeHistory[field], `${label}: historical ${field} must not change`);
+  }
+
+  const actualMonths = [];
+  for (let year = sourceYear; year <= 2032; year += 1) {
+    for (let month = 1; month <= 12; month += 1) {
+      if (year === sourceYear && month === sourceMonth) continue;
+      const rows = rowsById(loadRows(context, venue, `${month}月`, year), id);
+      assert.ok(rows.length <= 1, `${label}: ${year}/${month} must not contain duplicates`);
+      if (rows.length) actualMonths.push(`${year}/${month}`);
+    }
+  }
+  assert.deepEqual(actualMonths, expectedMonths, `${label}: explicit first due and CRM cadence must agree`);
+}
+
+await verifyExplicitFirstDueCase({
+  label: "211 office payment-day transition",
+  sourceMonth: 4,
+  id: "TST-211",
+  oldRow: {
+    section: "辦公室", name: "匿名辦公室", company: "匿名辦公室公司", cycle: "3M",
+    start: "114/04/15", end: "115/04/15", price: "32000/m", nextDate: "115/07",
+  },
+  crmRow: {
+    姓名: "匿名辦公室", 公司名稱: "匿名辦公室公司", 項目: "辦公室", 繳費方式: "3M",
+    起始日期: "115/04/01", 合約到期日: "116/04/01", 金額: "32000/m",
+  },
+  expectedMonths: ["2026/7", "2026/10", "2027/1", "2027/4"],
+});
+
+await verifyExplicitFirstDueCase({
+  label: "206 two-year prepaid",
+  sourceMonth: 3,
+  id: "TST-206",
+  oldRow: {
+    section: "營登", name: "匿名兩年預繳", company: "匿名兩年預繳商行", cycle: "6M",
+    start: "113/03/13", end: "115/03/13", price: "1650/m", nextDate: "117/03",
+  },
+  crmRow: {
+    姓名: "匿名兩年預繳", 公司名稱: "匿名兩年預繳商行", 項目: "營業登記", 繳費方式: "2Y",
+    起始日期: "115/03/13", 合約到期日: "117/03/13", 金額: "1650/m",
+  },
+  expectedMonths: ["2028/3"],
+});
+
+await verifyExplicitFirstDueCase({
+  label: "6M to annual transition",
+  sourceMonth: 6,
+  id: "TST-6M-Y",
+  oldRow: {
+    section: "營登", name: "匿名改年繳", company: "匿名改年繳公司", cycle: "6M",
+    start: "113/06/01", end: "115/06/01", price: "1690/m", nextDate: "116/06",
+  },
+  crmRow: {
+    姓名: "匿名改年繳", 公司名稱: "匿名改年繳公司", 項目: "營登", 繳費方式: "Y",
+    起始日期: "115/06/01", 合約到期日: "118/06/01", 金額: "1800/m",
+  },
+  expectedMonths: ["2027/6", "2028/6", "2029/6"],
+});
+
+await verifyExplicitFirstDueCase({
+  label: "temporary annual payment then CRM 6M cadence",
+  sourceMonth: 6,
+  id: "TST-Y-6M",
+  oldRow: {
+    section: "營登", name: "匿名暫時年繳", company: "匿名暫時年繳公司", cycle: "6M",
+    start: "113/06/01", end: "115/06/01", price: "1690/m", nextDate: "116/06",
+  },
+  crmRow: {
+    姓名: "匿名暫時年繳", 公司名稱: "匿名暫時年繳公司", 項目: "營業登記", 繳費方式: "6M",
+    起始日期: "115/06/01", 合約到期日: "117/06/01", 金額: "1690/m",
+  },
+  expectedMonths: ["2027/6", "2027/12", "2028/6"],
+});
 
 const sameCompanyContext = createContext();
 const sharedCompany = "匿名同名公司-不得合併";
