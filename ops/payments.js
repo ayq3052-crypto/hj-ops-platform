@@ -318,10 +318,66 @@ function cancelCrmAutoLookup() {
   crmAutoLookupTimer = null;
 }
 
-function fetchCrmRows(venue = activeVenue) {
-  const rows = readCrmRowsSync(venue);
-  if (rows.length) return Promise.resolve(rows);
-  return Promise.reject(new Error("目前沒有讀到 CRM 橋接資料，請先更新 CRM 來源"));
+function fetchTaichungGoogleSheetRows() {
+  const sheetId = "1-aNFPeM7nyTMTRJUQez0Vu2meuN4SH_SkODzVFnC-ro";
+  const gid = "1624136738";
+  const parseCsv = (text) => {
+    const table = [];
+    let row = [];
+    let field = "";
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (char === '"' && text[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else if (char === '"') {
+          quoted = false;
+        } else {
+          field += char;
+        }
+      } else if (char === '"') {
+        quoted = true;
+      } else if (char === ",") {
+        row.push(field);
+        field = "";
+      } else if (char === "\n") {
+        row.push(field.replace(/\r$/, ""));
+        table.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += char;
+      }
+    }
+    if (field || row.length) {
+      row.push(field.replace(/\r$/, ""));
+      table.push(row);
+    }
+    return table;
+  };
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+  return fetch(url, { cache: "no-store" }).then(async (response) => {
+    if (!response.ok) throw new Error(`人工 CRM 即時讀取失敗 (${response.status})`);
+    const table = parseCsv(await response.text());
+    const headers = (table.shift() || []).map((value) => String(value || "").trim());
+    return table.map((values) => {
+      const result = {};
+      headers.forEach((header, index) => { result[header] = String(values[index] || "").trim(); });
+      result._source = "google-sheet-crm-live";
+      return result;
+    }).filter(hasUsefulCrmData);
+  });
+}
+
+async function fetchCrmRows(venue = activeVenue) {
+  if (venue !== "taichung") {
+    throw new Error("環瑞館智慧帶入目前暫停，沒有使用舊快照代替 CRM");
+  }
+  const rows = await fetchTaichungGoogleSheetRows();
+  if (!rows.length) throw new Error("目前沒有查到人工 CRM");
+  return rows;
 }
 
 function readCrmRowsSync(venue = activeVenue) {
@@ -694,6 +750,7 @@ function fillNewCustomerFromCrm(item) {
 }
 
 function crmSourceLabel(item) {
+  if (item?._source === "google-sheet-crm-live") return "台中館人工 Google Sheet CRM（即時）";
   if (item?._source === "web-crm-bridge") return "新 CRM 本機橋接";
   if (item?._source === "web-crm") return "新 CRM 本機資料";
   if (item?._source === "bundled-crm") return "新 CRM 內建資料";
@@ -1699,40 +1756,21 @@ async function smartFillRenewalFromCrm() {
       return false;
     }
 
-    paymentRows = loadPaymentRows(targetVenue, targetMonth, targetYear);
-    const currentIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
-    if (currentIndex < 0) {
-      showToast("原繳費列已變更，本次續約帶入已取消");
-      return false;
-    }
-
-    const freshCurrentRow = paymentRows[currentIndex];
-    const removedOldFutureRows = removeGeneratedFutureRowsFor(freshCurrentRow, targetVenue, targetMonth, targetYear);
-    const suppressedOldBaseRows = suppressFutureBaseRowsFor(freshCurrentRow, false, targetVenue, targetMonth, targetYear);
-    const suppressedOldGeneratedRows = suppressFutureGeneratedRowsFor(freshCurrentRow, false, targetVenue, targetMonth, targetYear);
-    paymentRows = removeSameMonthRenewalDuplicates(paymentRows, targetVenue, targetMonth, targetYear);
-    const source = generationSourceForRow(nextRow, targetMonth, targetYear);
-    const generation = regenerateFuturePaymentsForRow(nextRow, targetVenue, source.month, source.year, {
-      sourceKind: "manual",
-      firstDueDate: freshCurrentRow.nextDate || "",
-    });
-    const historyIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
-    if (historyIndex >= 0) {
-      paymentRows[historyIndex] = markRenewalImportedHistoryRow(paymentRows[historyIndex]);
-    }
-    paymentRows = normalizeSectionGroups(paymentRows);
-    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === targetRowKey);
-    rowBasicsOpen = false;
-    saveRowsFor(targetVenue, targetMonth, paymentRows, targetYear);
-    renderAll();
-    runPaymentAudit("payment-smart-import-after", { venue: targetVenue, year: targetYear });
-
-    const clearedCount = removedOldFutureRows + suppressedOldBaseRows + suppressedOldGeneratedRows;
-    let toast = `${nextRow.id} 原列保留，已從下一期帶入新循環`;
-    if (generation.created) toast += `，已自動帶入 ${generation.created} 個後續月份`;
-    if (clearedCount) toast += `，已清掉 ${clearedCount} 筆舊循環`;
-    if (generation.stoppedForContract) toast += "，到期前會再提醒續約";
-    showToast(toast);
+    // Preview-only: put the verified renewal into the add form. The operator
+    // still has to review the complete insert list and confirm it. No existing
+    // payment row is removed, suppressed, merged, or rewritten here.
+    const panel = document.querySelector("#addCustomerPanel");
+    const toggle = document.querySelector("#toggleAddCustomer");
+    if (panel) panel.hidden = false;
+    toggle?.classList.add("active");
+    fillNewCustomerFromCrm(match);
+    setCrmCheckState(
+      "found",
+      `CRM 已找到續約：${match.編號 || ""} ${crmCompanyName(match) || match.姓名 || ""}`,
+      `${crmSourceLabel(match)}：${crmCheckSummary(match)}。確認預覽後才會新增，既有列不會修改。`,
+      match,
+    );
+    showToast(`${nextRow.id} 續約資料已帶入新增表單，尚未寫入`);
     return true;
   } catch (error) {
     showToast(`${error.message || "CRM 讀取失敗"}，先不要續約寫入`);
@@ -2293,7 +2331,7 @@ function addGeneratedRowToMonth(venue, monthLabel, row, year) {
   return true;
 }
 
-function generateFuturePaymentsForAddedCustomer(
+function planFuturePaymentsForAddedCustomer(
   row,
   venue = activeVenue,
   sourceMonth = activeMonth,
@@ -2303,61 +2341,63 @@ function generateFuturePaymentsForAddedCustomer(
   const cycleMonths = cycleMonthsFor(row);
   const currentMonthIndex = sheetMonthAbsoluteIndex(sourceMonth, sourceYear);
   if (!cycleMonths || currentMonthIndex === null || isClosingSection(row.section)) {
-    return { created: 0, nextDate: "", stoppedForContract: false };
+    return { candidates: [], nextDate: "", stoppedForContract: false };
   }
 
   const explicitFirstDueIndex = parseMinguoMonthIndex(options.firstDueDate);
-  const hasExplicitFirstDue =
-    explicitFirstDueIndex !== null && explicitFirstDueIndex > currentMonthIndex;
   let targetIndex =
-    hasExplicitFirstDue
+    explicitFirstDueIndex !== null && explicitFirstDueIndex > currentMonthIndex
       ? explicitFirstDueIndex
       : currentMonthIndex + cycleMonths;
-  let created = 0;
-  let firstNextDate = "";
-  let stoppedForContract = false;
-  let guard = 0;
   const endIndex = parseMinguoMonthIndex(row?.end);
   const optionLimit = Number.isFinite(options.limitIndex) ? options.limitIndex : null;
-  // A historical next-payment month is explicit collection evidence. Allow that
-  // one due row through even when it falls just after the CRM contract end, then
-  // mark it for renewal confirmation and stop future generation.
-  const effectiveEndIndex =
-    hasExplicitFirstDue && endIndex !== null
-      ? Math.max(endIndex, explicitFirstDueIndex)
-      : endIndex;
-  const generationLimitIndex =
-    effectiveEndIndex !== null && optionLimit !== null
-      ? Math.min(effectiveEndIndex, optionLimit)
-      : effectiveEndIndex ?? optionLimit ?? targetIndex;
+  const hardLimit = optionLimit ?? (endIndex !== null ? endIndex - 1 : monthAbsoluteIndexFor(sourceYear, 12));
+  const candidates = [];
+  let stoppedForContract = endIndex !== null && targetIndex >= endIndex;
+  let guard = 0;
 
-  while (targetIndex <= generationLimitIndex && guard < 600) {
+  while (targetIndex <= hardLimit && guard < 600) {
     guard += 1;
-    const target = minguoMonthFor(targetIndex);
-    if (!firstNextDate) firstNextDate = target.nextDate;
-    const isContractStop = reachesOrPassesContractEnd(row, target);
-
-    ensurePaymentYearExists(venue, target.year);
-    const nextRow = makeNextPaymentRow(row, target.monthLabel, sourceMonth, venue, target.year, sourceYear, options.sourceKind);
-    if (isContractStop) {
-      nextRow.nextDate = "";
-      nextRow.note = prioritizeContractConfirmationNote(`${contractConfirmationNote}；${nextRow.note}`);
+    // A due month at or after contract expiry is a renewal decision, not a
+    // confirmed payment row. It must never be generated before CRM renewal.
+    if (endIndex !== null && targetIndex >= endIndex) {
       stoppedForContract = true;
+      break;
     }
-
-    if (addGeneratedRowToMonth(venue, target.monthLabel, nextRow, target.year)) {
-      created += 1;
-    }
-
-    if (stoppedForContract) break;
+    const target = minguoMonthFor(targetIndex);
+    const nextRow = makeNextPaymentRow(row, target.monthLabel, sourceMonth, venue, target.year, sourceYear, options.sourceKind);
+    candidates.push({ venue, month: target.monthLabel, year: target.year, row: nextRow });
     targetIndex += cycleMonths;
   }
 
-  if (firstNextDate && !row.nextDate) {
-    row.nextDate = firstNextDate;
+  return {
+    candidates,
+    nextDate: candidates[0] ? minguoMonthFor(sheetMonthAbsoluteIndex(candidates[0].month, candidates[0].year)).nextDate : "",
+    stoppedForContract,
+  };
+}
+
+function generateFuturePaymentsForAddedCustomer(
+  row,
+  venue = activeVenue,
+  sourceMonth = activeMonth,
+  sourceYear = activeYear,
+  options = {},
+) {
+  const plan = planFuturePaymentsForAddedCustomer(row, venue, sourceMonth, sourceYear, options);
+  let created = 0;
+  plan.candidates.forEach((candidate) => {
+    ensurePaymentYearExists(candidate.venue, candidate.year);
+    if (addGeneratedRowToMonth(candidate.venue, candidate.month, candidate.row, candidate.year)) {
+      created += 1;
+    }
+  });
+
+  if (plan.nextDate && !row.nextDate) {
+    row.nextDate = plan.nextDate;
   }
 
-  return { created, nextDate: firstNextDate, stoppedForContract };
+  return { created, nextDate: plan.nextDate, stoppedForContract: plan.stoppedForContract };
 }
 
 function regenerateFuturePaymentsForRow(row, venue = activeVenue, sourceMonth = activeMonth, sourceYear = activeYear, options = {}) {
@@ -2478,83 +2518,60 @@ function addCustomerToCurrentMonth() {
     note: getValue("#newCustomerNote") || (isExistingCustomer ? "新循環" : "新辦"),
   };
 
-  const renewalSourceRow = findSameMonthRenewalSourceRow(newRow, paymentRows, activeMonth, activeYear);
-  if (renewalSourceRow) {
-    const sourceKey = renewalSourceRow._rowKey;
-    const removedGenerated = removeGeneratedFutureRowsFor(renewalSourceRow);
-    const suppressedBase = suppressFutureBaseRowsFor(renewalSourceRow);
-    const suppressedGenerated = suppressFutureGeneratedRowsFor(renewalSourceRow);
-    const source = generationSourceForRow(newRow, activeMonth, activeYear);
-    const generation = regenerateFuturePaymentsForRow(newRow, activeVenue, source.month, source.year, {
-      sourceKind: "manual",
-      firstDueDate: renewalSourceRow.nextDate || "",
-    });
-
-    const historyIndex = paymentRows.findIndex((row) => row._rowKey === sourceKey);
-    if (historyIndex >= 0) {
-      paymentRows[historyIndex] = markRenewalImportedHistoryRow(paymentRows[historyIndex]);
-    }
-
-    paymentRows = normalizeSectionGroups(removeSameMonthRenewalDuplicates(paymentRows, activeVenue, activeMonth, activeYear));
-    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === sourceKey);
-    if (selectedRowIndex < 0) selectedRowIndex = null;
-    savePaymentRows();
-    clearNewCustomerForm();
-    closeAddCustomerPanel();
-    renderAll();
-
-    let toast = `${id} 本月舊週期保留，已從下一期帶入新循環`;
-    if (generation.created) toast += ` ${generation.created} 筆`;
-    if (generation.stoppedForContract) toast += "，到期前先確認續約";
-    const cleanedCount = removedGenerated + suppressedBase + suppressedGenerated;
-    if (cleanedCount) toast += `，並整理舊循環 ${cleanedCount} 筆`;
-    showToast(toast);
-    window.requestAnimationFrame(() => {
-      document.querySelector(".payment-row.selected")?.scrollIntoView({ block: "center" });
-    });
+  const duplicateIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, newRow));
+  if (duplicateIndex >= 0) {
+    showToast(`${id} 這個合約期間已在 ${activeMonth}，沒有新增或改動任何資料`);
     return;
   }
 
-  const duplicateIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, newRow));
-  if (duplicateIndex >= 0) {
-    const existingRow = paymentRows[duplicateIndex];
-    const source = generationSourceForRow(existingRow, activeMonth, activeYear);
-    const generation = regenerateFuturePaymentsForRow(existingRow, activeVenue, source.month, source.year);
-    savePaymentRows();
-    renderAll();
-
-    let toast = `${id} 這個期間已在 ${activeMonth}`;
-    if (generation.created) {
-      toast += `，已補帶入 ${generation.created} 個後續月份`;
-    } else if (generation.restoredSuppressionCount) {
-      toast += "，已解除舊刪除記號";
-    }
-    if (generation.stoppedForContract) {
-      toast += "，到期前先確認續約";
-    }
-    showToast(toast);
+  const targetIndex = sheetMonthAbsoluteIndex(activeMonth, activeYear);
+  const startIndex = parseMinguoMonthIndex(newRow.start);
+  const endIndex = parseMinguoMonthIndex(newRow.end);
+  if (targetIndex === null || startIndex === null || endIndex === null || targetIndex < startIndex || targetIndex >= endIndex) {
+    showToast("目前月份不在 CRM 新合約期間內，沒有新增任何資料");
     return;
   }
 
   const source = generationSourceForRow(newRow, activeMonth, activeYear);
-  const generation = regenerateFuturePaymentsForRow(newRow, activeVenue, source.month, source.year);
-  const hasSameId = paymentRows.some((row) => row.id === id);
+  const plan = planFuturePaymentsForAddedCustomer(newRow, activeVenue, source.month, source.year, {
+    sourceKind: "manual",
+  });
+  const previewRows = [
+    `${activeYear}/${String(Number(String(activeMonth).replace(/[^\d]/g, ""))).padStart(2, "0")}　${newRow.section}　${newRow.cycle}`,
+    ...plan.candidates.map((candidate) =>
+      `${candidate.year}/${String(Number(String(candidate.month).replace(/[^\d]/g, ""))).padStart(2, "0")}　${candidate.row.section}　${candidate.row.cycle}`
+    ),
+  ];
+  const confirmed = window.confirm(
+    [
+      `確認新增 ${id} ${company}`,
+      `合約：${newRow.start} ～ ${newRow.end}`,
+      `共 ${previewRows.length} 筆，只新增不存在的列，不修改任何既有列：`,
+      "",
+      ...previewRows,
+    ].join("\n"),
+  );
+  if (!confirmed) {
+    showToast("已取消，沒有新增或改動任何資料");
+    return;
+  }
+
   paymentRows.push(newRow);
   paymentRows = normalizeSectionGroups(paymentRows);
   selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === newRow._rowKey);
   savePaymentRows();
+  let created = 0;
+  plan.candidates.forEach((candidate) => {
+    ensurePaymentYearExists(candidate.venue, candidate.year);
+    if (addGeneratedRowToMonth(candidate.venue, candidate.month, candidate.row, candidate.year)) created += 1;
+  });
+  runPaymentAudit("payment-smart-import-after", { venue: activeVenue, year: activeYear });
   clearNewCustomerForm();
   closeAddCustomerPanel();
   renderAll();
-  let toast = hasSameId ? `${id} 已新增不同期間到 ${activeMonth}` : `${id} 已新增到 ${activeMonth}`;
-  if (generation.created) {
-    toast += `，已自動帶入 ${generation.created} 個後續月份`;
-  } else if (generation.nextDate) {
-    toast += `，已填下次繳費 ${generation.nextDate}`;
-  }
-  if (generation.stoppedForContract) {
-    toast += "，到期前先確認續約";
-  }
+  let toast = `${id} 已新增本月 1 筆`;
+  if (created) toast += `，並依預覽新增後續 ${created} 筆`;
+  if (plan.stoppedForContract) toast += "，合約到期月份未建立";
   showToast(toast);
   window.requestAnimationFrame(() => {
     document.querySelector(".payment-row.selected")?.scrollIntoView({ block: "center" });
@@ -3006,10 +3023,6 @@ function switchYear(year, announce = false, auditTrigger = "payment-year-switch"
   const normalized = normalizeYear(year);
   if (!getGlobalYears().includes(normalized)) return;
   setActiveYearForAllVenues(normalized);
-  mergeBackfillSummaries(
-    backfillGeneratedRowsThroughYear(activeYear),
-    backfillCurrentPaymentYear(activeYear),
-  );
   paymentRows = loadPaymentRows(activeVenue, activeMonth, activeYear);
   closeAddCustomerPanel();
   resetCrmCheckState();
@@ -3026,9 +3039,8 @@ function switchYear(year, announce = false, auditTrigger = "payment-year-switch"
 function createNextYear() {
   if (yearActionLocked) return;
   const nextYear = getNextCreatableYear();
-  const sourceYear = activeYear;
   const confirmed = window.confirm(
-    `確定建立兩館 ${nextYear} 繳費年度？\n台中館與環瑞館會一起切到 ${nextYear}。自動生成的後續月份會保留；新客戶仍請用「新增客戶到本月」與「智慧帶入」。`,
+    `確定建立兩館 ${nextYear} 空白繳費年度？\n這一步只建立年度，不會從舊合約自動產生任何客戶資料。`,
   );
   if (!confirmed) return;
   const startedAt = Date.now();
@@ -3039,15 +3051,6 @@ function createNextYear() {
   if (yearBackfillTimer) window.clearTimeout(yearBackfillTimer);
   yearBackfillTimer = window.setTimeout(() => {
     ensurePaymentYearExistsForAll(nextYear);
-    venueKeys
-      .map((venue) => ({ venue, ...backfillFuturePaymentsForVenue(venue, sourceYear, Number(nextYear)) }))
-      .reduce(
-        (summary, result) => ({
-          created: summary.created + result.created,
-          labels: result.created ? [...summary.labels, `${venueLabels[result.venue]} ${result.created} 筆`] : summary.labels,
-        }),
-        { created: 0, labels: [] },
-      );
     finishYearActionAfterMinimum(startedAt, () => {
       switchYear(nextYear, false, "payment-year-create");
     }, `已轉入 ${nextYear}`);
@@ -3403,5 +3406,6 @@ if (document.querySelector("#paymentRows")) {
   renderAll();
   bindEvents();
   initIcons();
-  scheduleInitialBackfill(activeYear);
+  // Future payment rows are created only after an operator reviews and confirms
+  // the add/renewal preview. Opening the page must remain read-only.
 }

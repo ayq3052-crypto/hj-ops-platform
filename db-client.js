@@ -282,6 +282,7 @@
     const cycle = dbCycle && dbCycle.toLowerCase() !== "custom" ? dbCycle : snapshotCycle || dbCycle;
     return {
       ...snapshot,
+      _dbId: textOrEmpty(row.id),
       section: textOrEmpty(row.section || snapshot.section || "待確認"),
       id: textOrEmpty(row.customer_no || snapshot.id),
       name: textOrEmpty(row.customer_name || snapshot.name),
@@ -583,17 +584,57 @@
     if (customersError) throw customersError;
     const customersByNo = new Map((customers || []).map((customer) => [textOrEmpty(customer.customer_no), customer]));
     const month = monthNumber(context.month);
-    const deleteResult = await client
+    const payloadEntries = rows
+      .map((sourceRow, index) => ({
+        sourceRow,
+        payload: paymentPayloadFromLegacy(sourceRow, context, branches, customersByNo, index),
+      }))
+      .filter((entry) => Boolean(entry.payload));
+    if (!payloadEntries.length) return;
+
+    // Payment months contain hand-entered collection history. Never mirror a
+    // browser array by deleting the formal month first. Existing rows are
+    // updated only when their DB id is present; genuinely new rows are inserted
+    // one by one, and missing browser rows leave formal history untouched.
+    const { data: existingRows, error: existingError } = await client
       .from("payment_month_rows")
-      .delete()
+      .select("id,customer_no,payment_cycle,source_snapshot,metadata")
       .eq("branch_id", branch.id)
       .eq("year", Number(context.year))
       .eq("month", month);
-    if (deleteResult.error) throw deleteResult.error;
-    const payloads = rows.map((row, index) => paymentPayloadFromLegacy(row, context, branches, customersByNo, index)).filter(Boolean);
-    if (!payloads.length) return;
-    const { error } = await client.from("payment_month_rows").insert(payloads);
-    if (error) throw error;
+    if (existingError) throw existingError;
+
+    const existingById = new Map((existingRows || []).map((row) => [textOrEmpty(row.id), row]));
+    const identityFor = (row) => {
+      const snapshot = row?.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
+      const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+      const rowKey = textOrEmpty(snapshot._rowKey);
+      if (rowKey) return `key:${rowKey}`;
+      return [
+        textOrEmpty(row.customer_no).toUpperCase(),
+        textOrEmpty(row.payment_cycle).toUpperCase(),
+        textOrEmpty(metadata.start || snapshot.start),
+        textOrEmpty(metadata.end || snapshot.end),
+      ].join("|");
+    };
+    const existingIdentities = new Set((existingRows || []).map(identityFor));
+
+    for (const { payload, sourceRow } of payloadEntries) {
+      const dbId = textOrEmpty(sourceRow._dbId);
+      if (dbId && existingById.has(dbId)) {
+        const { error: updateError } = await client
+          .from("payment_month_rows")
+          .update(payload)
+          .eq("id", dbId);
+        if (updateError) throw updateError;
+        continue;
+      }
+      const identity = identityFor(payload);
+      if (existingIdentities.has(identity)) continue;
+      const { error: insertError } = await client.from("payment_month_rows").insert(payload);
+      if (insertError) throw insertError;
+      existingIdentities.add(identity);
+    }
   };
 
   const syncDraftEdits = async (edits) => {
