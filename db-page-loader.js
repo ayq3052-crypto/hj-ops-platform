@@ -2,7 +2,7 @@
   const pageScripts = {
     crm: ["./ops/payment-audit-engine.js?v=20260717-audit-1", "./app.js?v=20260713-crm-formal-save-1"],
     contracts: ["./contracts.js?v=20260709-contract-date-input-1"],
-    payments: ["./ops/payment-audit-engine.js?v=20260717-audit-1", "./ops/payments.js?v=20260718-y-to-y-formal-1"],
+    payments: ["./ops/payment-audit-engine.js?v=20260718-service-section-1", "./ops/payments.js?v=20260718-service-section-1"],
     drafts: ["./ops/drafts.js?v=20260708-draft-official-1"],
   };
 

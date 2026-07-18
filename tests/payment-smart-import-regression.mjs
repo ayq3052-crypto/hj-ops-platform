@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 
+await import("../ops/payment-audit-engine.js");
+
 class MockElement {
   constructor(selector = "") {
     this.selector = selector;
@@ -123,6 +125,8 @@ function createContext() {
 
 function runPayments(context) {
   vm.createContext(context);
+  const classificationSource = fs.readFileSync(new URL("../ops/payment-audit-engine.js", import.meta.url), "utf8");
+  vm.runInContext(classificationSource, context, { filename: "ops/payment-audit-engine.js" });
   const sourcePath = process.env.PAYMENTS_SOURCE || new URL("../ops/payments.js", import.meta.url);
   const source = fs.readFileSync(sourcePath, "utf8");
   vm.runInContext(source, context, { filename: "ops/payments.js" });
@@ -232,10 +236,7 @@ function addYears(date, years) {
 }
 
 function sectionFor(service, cycle) {
-  if (service === "辦公室") return "辦公室";
-  if (service === "自由座") return "自由座";
-  if (service === "營業登記" || service === "營登" || service === "代收信件") return "營登";
-  return ["Y", "2Y", "3Y"].includes(cycle) ? "年繳 / 2Y" : "營登";
+  return globalThis.HJPaymentAudit.displaySectionForServiceAndCycle(service, cycle);
 }
 
 function cycleMonths(cycle) {
@@ -887,7 +888,7 @@ installCrmBridge(explicitAfterEndContext, "taichung", 2026, [
 vm.runInContext(`backfillFuturePaymentsFromMonth("taichung", "1月", 2026, monthAbsoluteIndexFor(2027, 12))`, explicitAfterEndContext);
 const explicitAfterEndRows = rowsById(loadRows(explicitAfterEndContext, "taichung", "1月", 2027), "TST-269");
 assert.equal(explicitAfterEndRows.length, 1, "explicit next-payment evidence must create one due row after CRM end month");
-assert.equal(explicitAfterEndRows[0].section, "營登", "代收信件 must remain in the CRM service section");
+assert.equal(explicitAfterEndRows[0].section, "年繳 / 2Y", "年繳代收信件必須進年繳 / 2Y");
 assert.equal(
   vm.runInContext(`isContractConfirmationRow(${JSON.stringify(explicitAfterEndRows[0])}, "1月", 2027)`, explicitAfterEndContext),
   true,

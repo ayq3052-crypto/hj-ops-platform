@@ -76,6 +76,11 @@
     return row?.contract_end || row?.end_date || row?.source_snapshot?.end || row?.到期日 || row?.合約到期日;
   }
 
+  function sourceNextDate(row) {
+    return row?.next_payment_date || row?.nextDate || row?.next_date || row?.source_snapshot?.nextDate
+      || row?.下次繳費日 || row?.下次繳費;
+  }
+
   function rowMonth(row) {
     const explicit = Number(row?.month || row?.月份);
     if (explicit >= 1 && explicit <= 12) return explicit;
@@ -148,7 +153,21 @@
     if (/辦公室|office/.test(value) && !/營登|營業登記|虛擬辦公室|virtual.?office/.test(value)) {
       return "office";
     }
+    if (/代收信件|信件代收|mail/.test(value)) return "mail";
     if (/營登|營業登記|虛擬辦公室|virtual.?office/.test(value)) return "registration";
+    return "";
+  }
+
+  function displaySectionForServiceAndCycle(service, cycle) {
+    const serviceValue = text(service).normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+    const cycleValue = text(cycle).toUpperCase().replace(/\s+/g, "");
+    if (/自由座|共享座位|共享辦公室|free.?seat|cowork/.test(serviceValue)) return "自由座";
+    if (/辦公室|office/.test(serviceValue) && !/營登|營業登記|虛擬辦公室|virtual.?office/.test(serviceValue)) {
+      return "辦公室";
+    }
+    if (/營登|營業登記|代收信件|信件代收|虛擬辦公室|virtual.?office|mail/.test(serviceValue)) {
+      return ["Y", "1Y", "2Y", "3Y"].includes(cycleValue) ? "年繳 / 2Y" : "營登";
+    }
     return "";
   }
 
@@ -180,6 +199,67 @@
       if ((index - start.monthIndex) % cadence === 0) months.push(month);
     }
     return { cycle, months, reason: "" };
+  }
+
+  function customerEvidenceKey(row) {
+    return [branchOf(row), customerId(row)].join("|");
+  }
+
+  function authoritativeExpectedMonths(crmRow, historyRows, year) {
+    const cycle = cycleOf(crmRow);
+    const cadence = cadenceMonths(cycle);
+    const crmStart = parseDate(sourceStart(crmRow));
+    const crmEnd = parseDate(sourceEnd(crmRow));
+    if (!cadence || !crmStart) {
+      return {
+        cycle,
+        months: [],
+        reason: !cadence ? "UNKNOWN_CYCLE" : "MISSING_START_DATE",
+        anchor: null,
+      };
+    }
+
+    const usableHistory = (historyRows || [])
+      .filter(row => !isEnding(row) && !isNonBillable(row));
+    const explicitDates = usableHistory
+      .map(row => parseDate(sourceNextDate(row)))
+      .filter(Boolean)
+      .sort((left, right) => right.monthIndex - left.monthIndex);
+    const latestHistoryIndex = usableHistory.reduce((latest, row) => {
+      const paymentYear = rowYear(row);
+      const paymentMonth = rowMonth(row);
+      if (!paymentYear || !paymentMonth) return latest;
+      return Math.max(latest, paymentYear * 12 + paymentMonth - 1);
+    }, -Infinity);
+
+    // A manually recorded next-payment month is the strongest evidence for the
+    // first future charge. CRM cadence governs only the charges after it.
+    let anchor = explicitDates[0] || crmStart;
+    let anchorEvidence = explicitDates.length ? "PAYMENT_NEXT_DATE" : "CRM_SCHEDULE";
+    if (!explicitDates.length && Number.isFinite(latestHistoryIndex)) {
+      let index = crmStart.monthIndex;
+      while (index <= latestHistoryIndex) index += cadence;
+      anchor = {
+        year: Math.floor(index / 12),
+        month: (index % 12) + 1,
+        day: crmStart.day,
+        monthIndex: index,
+      };
+      anchorEvidence = "CRM_CADENCE_AFTER_HISTORY";
+    }
+
+    const months = [];
+    const targetStart = year * 12;
+    const targetEnd = targetStart + 11;
+    for (let index = anchor.monthIndex; index <= targetEnd; index += cadence) {
+      if (index < targetStart) continue;
+      // The explicit anchor remains valid even when it lands on/after the
+      // current CRM end date; later automatic charges require a live contract.
+      if (crmEnd && index > crmEnd.monthIndex && index !== anchor.monthIndex) break;
+      months.push((index % 12) + 1);
+    }
+
+    return { cycle, months, reason: "", anchor, anchorEvidence };
   }
 
   function flattenRowsByMonth(rowsByMonth, fallbackYear) {
@@ -270,16 +350,23 @@
     const crmRows = clone(input.crmRows || []).filter(row => branchOf(row) === venue);
     const paymentRows = flattenRowsByMonth(input.paymentRowsByMonth, year)
       .filter(row => branchOf(row) === venue && rowYear(row) === year);
+    const previousRows = flattenRowsByMonth(input.previousRowsByMonth, year - 1)
+      .filter(row => branchOf(row) === venue);
     const activeCrm = crmRows.filter(row => !isEnding(row));
     const crmById = new Map(activeCrm.map(row => [customerId(row), row]));
     const currentRowsByCustomerMonth = groupBy(paymentRows, customerMonthKey);
+    const evidenceByCustomer = groupBy(previousRows, customerEvidenceKey);
 
     const unschedulable = [];
     const missing = [];
     activeCrm.forEach(row => {
       const id = customerId(row);
       if (!id) return;
-      const expected = expectedMonths(row, year);
+      const expected = authoritativeExpectedMonths(
+        row,
+        evidenceByCustomer.get(customerEvidenceKey(row)) || [],
+        year,
+      );
       if (expected.reason) {
         unschedulable.push({
           code: expected.reason,
@@ -299,7 +386,7 @@
         if (hasCurrentCharge) return;
         missing.push({
           code: "MISSING_EXPECTED_ROW",
-          evidence: "CRM_SCHEDULE",
+          evidence: expected.anchorEvidence,
           venue,
           year,
           month,
@@ -504,6 +591,8 @@
   global.HJPaymentAudit = Object.freeze({
     auditYear,
     auditCustomer,
+    authoritativeExpectedMonths,
+    displaySectionForServiceAndCycle,
     actionableFindings,
     runAudit,
     runFromPlatformGlobals,

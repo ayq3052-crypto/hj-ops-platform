@@ -439,13 +439,8 @@ function mergeCrmRows(...rowGroups) {
   });
 }
 
-function sectionFromCrmServiceAndCycle(service) {
-  const serviceText = String(service || "").trim();
-  if (serviceText.includes("辦公室")) return "辦公室";
-  if (serviceText.includes("自由座")) return "自由座";
-  if (serviceText.includes("代收信件")) return "營登";
-  if (serviceText.includes("營")) return "營登";
-  return "";
+function sectionFromCrmServiceAndCycle(service, cycle) {
+  return window.HJPaymentAudit?.displaySectionForServiceAndCycle?.(service, cycle) || "";
 }
 
 function serviceSectionFromCrm(item, fallbackCycle = "", fallbackCompany = "") {

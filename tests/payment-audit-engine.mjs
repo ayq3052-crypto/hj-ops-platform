@@ -23,6 +23,19 @@ assert.equal(typeof engine.auditYear, "function");
 assert.equal(typeof engine.auditCustomer, "function");
 assert.equal(typeof engine.actionableFindings, "function");
 
+for (const service of ["營登", "營業登記", "代收信件", "虛擬辦公室"]) {
+  for (const cycle of ["Y", "2Y", "3Y"]) {
+    assert.equal(engine.displaySectionForServiceAndCycle(service, cycle), "年繳 / 2Y", `${service} + ${cycle}`);
+  }
+  for (const cycle of ["M", "3M", "6M"]) {
+    assert.equal(engine.displaySectionForServiceAndCycle(service, cycle), "營登", `${service} + ${cycle}`);
+  }
+}
+for (const cycle of ["M", "3M", "6M", "Y", "2Y", "3Y"]) {
+  assert.equal(engine.displaySectionForServiceAndCycle("辦公室", cycle), "辦公室", `辦公室 + ${cycle}`);
+  assert.equal(engine.displaySectionForServiceAndCycle("自由座", cycle), "自由座", `自由座 + ${cycle}`);
+}
+
 function crmRow(overrides = {}) {
   return {
     branch_code: "taichung",
@@ -62,6 +75,51 @@ function paymentRow(overrides = {}) {
     },
     ...overrides,
   };
+}
+
+{
+  const report = engine.auditYear({
+    venue: "taichung",
+    year: 2028,
+    crmRows: [crmRow({
+      customer_no: "206",
+      service_type: "營登",
+      payment_cycle: "6M",
+      contract_start: "2028-04-13",
+      contract_end: "2030-04-13",
+    })],
+    paymentRowsByMonth: {},
+    previousRowsByMonth: {
+      3: [paymentRow({
+        year: 2026,
+        month: 3,
+        customer_no: "206",
+        nextDate: "117/03",
+      })],
+    },
+  });
+  assert.equal(
+    report.missing.some(item => item.id === "206" && item.month === 3 && item.evidence === "PAYMENT_NEXT_DATE"),
+    true,
+    "舊繳費列的下次繳費日必須成為應收核對依據",
+  );
+}
+
+{
+  const report = engine.auditYear({
+    venue: "taichung",
+    year: 2026,
+    crmRows: [crmRow({
+      customer_no: "269",
+      service_type: "代收信件",
+      payment_cycle: "Y",
+      contract_start: "2026-01-01",
+      contract_end: "2026-12-31",
+    })],
+    paymentRowsByMonth: {},
+    previousRowsByMonth: {},
+  });
+  assert.equal(report.missing[0]?.service, "代收信件", "代收信件必須保留 CRM 服務身分");
 }
 
 function audit({ crmRows = [crmRow()], paymentRows = [], sourceRows = [] } = {}) {
