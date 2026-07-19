@@ -94,7 +94,7 @@ function evalIn(context, source) {
   context.__current = { section: "辦公室", id: "TST-RENEW", name: "測試人員", company: "測試公司", cycle: "M", start: "114/06/01", end: "115/07/01", price: "10000/m", paidDate: "7/1", paidAmount: "10000", invoice: "V", note: "合約到期，先確認續約", _rowKey: "test-current" };
   evalIn(context, `activeVenue="taichung"; activeYear=2026; activeMonth="7月"; paymentRows=[__current]; selectedRowIndex=0;`);
   const before = JSON.stringify(context.localStorage.dump());
-  context.__crm = [{ 編號: "TST-RENEW", 姓名: "測試人員", 公司: "測試公司", 項目: "辦公室", 繳費方式: "M", 起始日期: "115/07/01", 合約到期日: "116/07/01", 金額: "10000/m", _source: "google-sheet-crm-live" }];
+  context.__crm = [{ 編號: "TST-RENEW", 姓名: "測試人員", 公司: "測試公司", 項目: "辦公室", 繳費方式: "M", 起始日期: "115/07/01", 合約到期日: "116/07/01", 金額: "10000/m", _source: "web-crm-formal" }];
   const result = await evalIn(context, `(async()=>{ isContractConfirmationRow=()=>true; findRenewalCrmMatch=()=>__crm[0]; validCompleteRenewalPeriod=()=>true; fetchCrmRows=()=>Promise.resolve(__crm); renderAll=()=>{}; showToast=(message)=>{globalThis.__toast=message}; return smartFillRenewalFromCrm(); })()`);
   assert.equal(result, true, context.__toast || "renewal preview should succeed");
   assert.equal(JSON.stringify(context.localStorage.dump()), before, "renewal smart fill must be preview-only");
@@ -105,7 +105,7 @@ function evalIn(context, source) {
 {
   const context = makeContext();
   const prepare = () => {
-    context.__crm = { 編號: "300", 姓名: "測試", 公司: "測試公司", 項目: "辦公室", 繳費方式: "M", 起始日期: "115/07/01", 合約到期日: "115/10/01", 金額: "1000/m", _source: "google-sheet-crm-live" };
+    context.__crm = { 編號: "300", 姓名: "測試", 公司: "測試公司", 項目: "辦公室", 繳費方式: "M", 起始日期: "115/07/01", 合約到期日: "115/10/01", 金額: "1000/m", _source: "web-crm-formal" };
     evalIn(context, `
       activeVenue="taichung"; activeYear=2026; activeMonth="7月"; paymentRows=loadPaymentRows(activeVenue,activeMonth,activeYear);
       fillNewCustomerFromCrm(__crm);

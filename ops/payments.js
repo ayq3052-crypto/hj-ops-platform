@@ -318,65 +318,24 @@ function cancelCrmAutoLookup() {
   crmAutoLookupTimer = null;
 }
 
-function fetchTaichungGoogleSheetRows() {
-  const sheetId = "1-aNFPeM7nyTMTRJUQez0Vu2meuN4SH_SkODzVFnC-ro";
-  const gid = "1624136738";
-  const parseCsv = (text) => {
-    const table = [];
-    let row = [];
-    let field = "";
-    let quoted = false;
-    for (let index = 0; index < text.length; index += 1) {
-      const char = text[index];
-      if (quoted) {
-        if (char === '"' && text[index + 1] === '"') {
-          field += '"';
-          index += 1;
-        } else if (char === '"') {
-          quoted = false;
-        } else {
-          field += char;
-        }
-      } else if (char === '"') {
-        quoted = true;
-      } else if (char === ",") {
-        row.push(field);
-        field = "";
-      } else if (char === "\n") {
-        row.push(field.replace(/\r$/, ""));
-        table.push(row);
-        row = [];
-        field = "";
-      } else {
-        field += char;
-      }
-    }
-    if (field || row.length) {
-      row.push(field.replace(/\r$/, ""));
-      table.push(row);
-    }
-    return table;
-  };
-  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
-  return fetch(url, { cache: "no-store" }).then(async (response) => {
-    if (!response.ok) throw new Error(`人工 CRM 即時讀取失敗 (${response.status})`);
-    const table = parseCsv(await response.text());
-    const headers = (table.shift() || []).map((value) => String(value || "").trim());
-    return table.map((values) => {
-      const result = {};
-      headers.forEach((header, index) => { result[header] = String(values[index] || "").trim(); });
-      result._source = "google-sheet-crm-live";
-      return result;
-    }).filter(hasUsefulCrmData);
-  });
-}
-
 async function fetchCrmRows(venue = activeVenue) {
-  if (venue !== "taichung") {
-    throw new Error("環瑞館智慧帶入目前暫停，沒有使用舊快照代替 CRM");
-  }
-  const rows = await fetchTaichungGoogleSheetRows();
-  if (!rows.length) throw new Error("目前沒有查到人工 CRM");
+  const source = window.HJ_CRM_SOURCE_DATA;
+  const years = source?.venues?.[venue]?.years;
+  const rows = years && typeof years === "object"
+    ? Object.values(years).flat().map((row) => ({
+        編號: String(row?.編號 || row?.id || "").trim(),
+        姓名: String(row?.姓名 || row?.name || "").trim(),
+        公司名稱: String(row?.公司名稱 || row?.公司 || row?.companyName || row?.company || "").trim(),
+        項目: String(row?.項目 || row?.item || "").trim(),
+        繳費方式: String(row?.繳費方式 || row?.cycle || "").trim(),
+        起始日期: String(row?.起始日期 || row?.start || "").trim(),
+        合約到期日: String(row?.合約到期日 || row?.end || "").trim(),
+        金額: String(row?.金額 || row?.amount || "").trim(),
+        階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
+        _source: "web-crm-formal",
+      })).filter(hasUsefulCrmData)
+    : [];
+  if (!rows.length) throw new Error("目前沒有讀到網頁版 CRM 正式資料");
   return rows;
 }
 
@@ -750,7 +709,7 @@ function fillNewCustomerFromCrm(item) {
 }
 
 function crmSourceLabel(item) {
-  if (item?._source === "google-sheet-crm-live") return "台中館人工 Google Sheet CRM（即時）";
+  if (item?._source === "web-crm-formal") return "網頁版 CRM 正式資料";
   if (item?._source === "web-crm-bridge") return "新 CRM 本機橋接";
   if (item?._source === "web-crm") return "新 CRM 本機資料";
   if (item?._source === "bundled-crm") return "新 CRM 內建資料";
