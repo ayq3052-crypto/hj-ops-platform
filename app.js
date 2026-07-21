@@ -69,7 +69,16 @@ const profileSections = [
 const cycleOptions = ["M", "3M", "6M", "Y", "2Y", "3Y"];
 const categoryOptions = ["行號", "有限公司", "股份有限公司", "Ａ辦", "Ｂ辦", "Ｃ辦", "Ｄ辦", "Ｅ辦", "Ｆ辦"];
 const itemOptions = ["營登", "辦公室", "自由座", "代收信件", "事務所"];
-const crmDateFields = new Set(["birthday", "start", "end", "signedAt"]);
+const crmDateFields = new Set([
+  "birthday",
+  "start",
+  "end",
+  "signedAt",
+  "stage1Start",
+  "stage1End",
+  "stage2Start",
+  "stage2End",
+]);
 
 const appTitle = document.querySelector("#appTitle");
 const venueKicker = document.querySelector("#venueKicker");
@@ -217,6 +226,24 @@ function getSourceData() {
 
 function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
   const rawIndustry = String(row?.industry || "").trim();
+  const storedStages = Array.isArray(row?.pricingStages)
+    ? row.pricingStages
+    : Array.isArray(row?.priceStages)
+      ? row.priceStages
+      : [];
+  const storedStage1 = storedStages[0] && typeof storedStages[0] === "object" ? storedStages[0] : {};
+  const storedStage2 = storedStages[1] && typeof storedStages[1] === "object" ? storedStages[1] : {};
+  const stage1Years = String(row?.stage1Years || storedStage1.years || "").trim();
+  const stage1Start = String(row?.stage1Start || storedStage1.start || "").trim();
+  const stage1End = String(row?.stage1End || storedStage1.end || "").trim();
+  const stage2Years = String(row?.stage2Years || storedStage2.years || "").trim();
+  const stage2Start = String(row?.stage2Start || storedStage2.start || "").trim();
+  const stage2End = String(row?.stage2End || storedStage2.end || "").trim();
+  const stage2Amount = String(row?.stage2Amount || storedStage2.amount || "").trim();
+  const hasSecondStage =
+    row?.hasSecondStage === true ||
+    row?.hasSecondStage === "true" ||
+    Boolean(stage1Years || stage1Start || stage1End || stage2Years || stage2Start || stage2End || stage2Amount);
   const pricePlan = String(
     row?.pricePlan ||
       row?.stagedAmount ||
@@ -232,13 +259,22 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     category: String(row?.category || "").trim(),
     item: String(row?.item || "").trim(),
     cycle: normalizeCycleValue(row?.cycle || ""),
-    start: String(row?.start || "").trim(),
-    end: String(row?.end || "").trim(),
+    start: hasSecondStage ? stage1Start || String(row?.start || "").trim() : String(row?.start || "").trim(),
+    end: hasSecondStage ? stage2End || String(row?.end || "").trim() : String(row?.end || "").trim(),
     contractYears: "",
     contractTerm: "",
     payDay: String(row?.payDay || "").trim(),
     amount: String(row?.amount || "").trim(),
     pricePlan,
+    hasSecondStage,
+    stage1Years,
+    stage1Start: hasSecondStage ? stage1Start || String(row?.start || "").trim() : "",
+    stage1End,
+    stage2Years,
+    stage2Start,
+    stage2End: hasSecondStage ? stage2End || String(row?.end || "").trim() : "",
+    stage2Amount,
+    stage2Kind: hasSecondStage ? "price_change" : "",
     deposit: String(row?.deposit || "").trim(),
     phone: String(row?.phone || "").trim(),
     signedAt: String(row?.signedAt || "").trim(),
@@ -256,7 +292,15 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     venue,
   };
   normalized.contractYears = normalizeContractYears(row?.contractYears) || String(getContractYearDiff(normalized.start, normalized.end) || getYearsFromContractTerm(row?.contractTerm) || "");
+  const stagedYears = contractYearsNumber(normalized.stage1Years) + contractYearsNumber(normalized.stage2Years);
+  if (normalized.hasSecondStage && stagedYears > 0) normalized.contractYears = String(stagedYears);
   normalized.contractTerm = inferContractTermFromDates(normalized.start, normalized.end) || normalizeContractTermValue(row?.contractTerm);
+  normalized.pricingStages = normalized.hasSecondStage
+    ? [
+        { years: normalized.stage1Years, start: normalized.stage1Start, end: normalized.stage1End, amount: normalized.amount },
+        { years: normalized.stage2Years, start: normalized.stage2Start, end: normalized.stage2End, amount: normalized.stage2Amount, kind: "price_change" },
+      ]
+    : [];
   normalized.uid = row?.uid || `${venue}-${normalized.folder}-${String(index + 1).padStart(3, "0")}-${normalized.id || "no-id"}`;
   return normalized;
 }
@@ -465,6 +509,16 @@ function createBlankRow() {
     payDay: "",
     amount: "",
     pricePlan: "",
+    hasSecondStage: false,
+    stage1Years: "",
+    stage1Start: "",
+    stage1End: "",
+    stage2Years: "",
+    stage2Start: "",
+    stage2End: "",
+    stage2Amount: "",
+    stage2Kind: "",
+    pricingStages: [],
     deposit: "",
     coNumber: "",
     idNumber: "",
@@ -525,6 +579,16 @@ function buildPaymentBridgeData() {
           end: row.end,
           amount: row.amount,
           pricePlan: row.pricePlan,
+          hasSecondStage: row.hasSecondStage,
+          stage1Years: row.stage1Years,
+          stage1Start: row.stage1Start,
+          stage1End: row.stage1End,
+          stage2Years: row.stage2Years,
+          stage2Start: row.stage2Start,
+          stage2End: row.stage2End,
+          stage2Amount: row.stage2Amount,
+          stage2Kind: row.stage2Kind,
+          pricingStages: row.pricingStages,
           coNumber: row.coNumber,
           idNumber: row.idNumber,
         }));
@@ -622,6 +686,48 @@ function shiftRocDate(value, yearDelta) {
   return formatRocDate({ ...parsed, rocYear: parsed.rocYear + yearDelta });
 }
 
+function rocDateToUtc(value) {
+  const parsed = parseRocDate(value);
+  if (!parsed) return null;
+  const gregorianYear = parsed.rocYear + 1911;
+  const month = Number(parsed.month);
+  const day = Number(parsed.day);
+  const date = new Date(Date.UTC(gregorianYear, month - 1, day));
+  if (date.getUTCFullYear() !== gregorianYear || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date;
+}
+
+function utcToRocDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const rocYear = date.getUTCFullYear() - 1911;
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${rocYear}/${month}/${day}`;
+}
+
+function addRocDays(value, days) {
+  const date = rocDateToUtc(value);
+  if (!date || !Number.isInteger(days)) return "";
+  date.setUTCDate(date.getUTCDate() + days);
+  return utcToRocDate(date);
+}
+
+function addRocYears(value, years) {
+  const date = rocDateToUtc(value);
+  if (!date || !Number.isInteger(years) || years <= 0) return "";
+  const targetYear = date.getUTCFullYear() + years;
+  const month = date.getUTCMonth();
+  const day = date.getUTCDate();
+  const lastDay = new Date(Date.UTC(targetYear, month + 1, 0)).getUTCDate();
+  return utcToRocDate(new Date(Date.UTC(targetYear, month, Math.min(day, lastDay))));
+}
+
+function sameRocDate(left, right) {
+  const leftDate = rocDateToUtc(left);
+  const rightDate = rocDateToUtc(right);
+  return Boolean(leftDate && rightDate && leftDate.getTime() === rightDate.getTime());
+}
+
 function rocToGregorianYear(value) {
   const parsed = parseRocDate(value);
   return parsed ? parsed.rocYear + 1911 : null;
@@ -703,11 +809,52 @@ function calculateEndDateFromStartAndYears(start, yearsValue) {
 }
 
 function getComparableRocDate(value) {
-  const parsed = parseRocDate(value);
-  return parsed ? parsed.rocYear * 10000 + Number(parsed.month) * 100 + Number(parsed.day) : 0;
+  const date = rocDateToUtc(value);
+  return date ? date.getTime() : 0;
+}
+
+function isSecondStageActive(row) {
+  return Boolean(row?.hasSecondStage);
+}
+
+function moneyHasNumber(value) {
+  return /\d/.test(String(value || "").normalize("NFKC").replace(/,/g, ""));
+}
+
+function getSecondStageIssue(row) {
+  if (!isSecondStageActive(row)) return "";
+  const requiredFields = [
+    [row.amount, "第一段金額"],
+    [row.stage1Years, "第一段年數"],
+    [row.stage1Start, "第一段起始日期"],
+    [row.stage1End, "第一段到期日"],
+    [row.stage2Years, "第二段年數"],
+    [row.stage2Start, "第二段起始日期"],
+    [row.stage2End, "第二段到期日"],
+    [row.stage2Amount, "第二段金額"],
+  ];
+  const missing = requiredFields.find(([value]) => !String(value || "").trim());
+  if (missing) return `${missing[1]}不可空白`;
+
+  const stage1Years = contractYearsNumber(row.stage1Years);
+  const stage2Years = contractYearsNumber(row.stage2Years);
+  if (!Number.isInteger(stage1Years) || !Number.isInteger(stage2Years)) return "兩段年數必須是完整年度";
+  if (![row.stage1Start, row.stage1End, row.stage2Start, row.stage2End].every(rocDateToUtc)) return "兩段合約日期格式不正確";
+  if (!moneyHasNumber(row.amount) || !moneyHasNumber(row.stage2Amount)) return "兩段金額必須包含數字";
+
+  const expectedStage1End = addRocDays(addRocYears(row.stage1Start, stage1Years), -1);
+  const expectedStage2Start = addRocDays(row.stage1End, 1);
+  const expectedStage2End = addRocYears(row.stage2Start, stage2Years);
+  if (!sameRocDate(row.stage1End, expectedStage1End)) return "第一段到期日與年數不一致";
+  if (!sameRocDate(row.stage2Start, expectedStage2Start)) return "兩段日期不可重疊或中斷";
+  if (!sameRocDate(row.stage2End, expectedStage2End)) return "第二段到期日與年數不一致";
+  if (!sameRocDate(row.start, row.stage1Start) || !sameRocDate(row.end, row.stage2End)) return "兩段日期必須完整涵蓋本合約";
+  return "";
 }
 
 function getContractDateIssue(row) {
+  const secondStageIssue = getSecondStageIssue(row);
+  if (secondStageIssue) return secondStageIssue;
   if (!row?.start || !row.end) return "";
   const startDate = getComparableRocDate(row.start);
   const endDate = getComparableRocDate(row.end);
@@ -715,8 +862,52 @@ function getContractDateIssue(row) {
   return endDate > startDate ? "" : "合約到期日必須晚於起始日期";
 }
 
+function refreshPricingStages(row) {
+  row.pricingStages = isSecondStageActive(row)
+    ? [
+        { years: row.stage1Years, start: row.stage1Start, end: row.stage1End, amount: row.amount },
+        { years: row.stage2Years, start: row.stage2Start, end: row.stage2End, amount: row.stage2Amount, kind: "price_change" },
+      ]
+    : [];
+  row.stage2Kind = isSecondStageActive(row) ? "price_change" : "";
+}
+
+function syncSecondStageFields(changedName) {
+  if (!draftRow || !isSecondStageActive(draftRow)) return;
+  if (changedName === "stage1Years") draftRow.stage1Years = normalizeContractYears(draftRow.stage1Years);
+  if (changedName === "stage2Years") draftRow.stage2Years = normalizeContractYears(draftRow.stage2Years);
+
+  if (changedName === "stage1End" && rocDateToUtc(draftRow.stage1End)) {
+    draftRow.stage2Start = addRocDays(draftRow.stage1End, 1);
+  } else if (changedName === "stage2Start" && rocDateToUtc(draftRow.stage2Start)) {
+    draftRow.stage1End = addRocDays(draftRow.stage2Start, -1);
+  }
+
+  const stage1Years = contractYearsNumber(draftRow.stage1Years);
+  if (["stage1Start", "stage1Years"].includes(changedName) && stage1Years && rocDateToUtc(draftRow.stage1Start)) {
+    const stage2Start = addRocYears(draftRow.stage1Start, stage1Years);
+    draftRow.stage1End = addRocDays(stage2Start, -1);
+    draftRow.stage2Start = stage2Start;
+  }
+
+  const stage2Years = contractYearsNumber(draftRow.stage2Years);
+  if (["stage1Start", "stage1Years", "stage1End", "stage2Start", "stage2Years"].includes(changedName) && stage2Years && rocDateToUtc(draftRow.stage2Start)) {
+    draftRow.stage2End = addRocYears(draftRow.stage2Start, stage2Years);
+  }
+
+  draftRow.start = draftRow.stage1Start;
+  draftRow.end = draftRow.stage2End;
+  if (stage1Years && stage2Years) draftRow.contractYears = String(stage1Years + stage2Years);
+  draftRow.contractTerm = getDisplayContractTerm(draftRow);
+  refreshPricingStages(draftRow);
+}
+
 function syncContractFields(changedName) {
   if (!draftRow) return;
+  if (isSecondStageActive(draftRow) && /^(stage1|stage2)/.test(changedName)) {
+    syncSecondStageFields(changedName);
+    return;
+  }
   if (changedName === "contractYears") {
     draftRow.contractYears = normalizeContractYears(draftRow.contractYears);
   }
@@ -734,7 +925,7 @@ function syncContractFields(changedName) {
 }
 
 function syncVisibleContractControls() {
-  ["contractYears", "contractTerm", "start", "end"].forEach((name) => {
+  ["contractYears", "contractTerm", "start", "end", "stage1Years", "stage1Start", "stage1End", "stage2Years", "stage2Start", "stage2End"].forEach((name) => {
     const control = profileForm.querySelector(`[name="${name}"]`);
     if (!control) return;
     control.value = name === "contractTerm" ? getDisplayContractTerm(draftRow || {}) : draftRow?.[name] || "";
@@ -755,11 +946,26 @@ function buildNextYearRow(row, targetYear, venue = activeVenue) {
   const endYear = rocToGregorianYear(row.end);
   const copied = { ...row, uid: `${row.uid || getRowKey(row)}-${targetYear}`, venue };
   if (!endYear || Number(targetYear) < endYear) return copied;
-  return {
+  const nextCycle = {
     ...copied,
     start: shiftRocDate(row.start, years),
     end: shiftRocDate(row.end, years),
   };
+  if (isSecondStageActive(row)) {
+    nextCycle.amount = row.stage2Amount || row.amount;
+    nextCycle.pricePlan = "";
+    nextCycle.hasSecondStage = false;
+    nextCycle.stage1Years = "";
+    nextCycle.stage1Start = "";
+    nextCycle.stage1End = "";
+    nextCycle.stage2Years = "";
+    nextCycle.stage2Start = "";
+    nextCycle.stage2End = "";
+    nextCycle.stage2Amount = "";
+    nextCycle.stage2Kind = "";
+    nextCycle.pricingStages = [];
+  }
+  return nextCycle;
 }
 
 function setSaveState(text, tone = "") {
@@ -1040,11 +1246,16 @@ function selectOverviewRow(rows, rowElement) {
 function renderMetrics(row) {
   const displayContractTerm = getDisplayContractTerm(row);
   const contractRange = row.start && row.end ? `${row.start} → ${row.end}` : "";
+  const amountSubvalue = isSecondStageActive(row)
+    ? row.stage2Amount
+      ? `第2段 ${row.stage2Amount}`
+      : ""
+    : row.pricePlan;
   metrics.innerHTML = [
     { label: "項目", value: row.item, className: "compact" },
     { label: "繳費方式", value: row.cycle, className: "compact" },
     { label: "合約期間", value: displayContractTerm, subvalue: contractRange, className: "period" },
-    { label: "金額", value: row.amount, subvalue: row.pricePlan, className: "amount" },
+    { label: "金額", value: row.amount, subvalue: amountSubvalue, className: "amount" },
   ]
     .map((metric) => `
       <article class="metric ${metric.className}">
@@ -1070,9 +1281,9 @@ function createTextControl(key, label, row) {
 }
 
 function placeholderForField(key) {
-  if (key === "contractYears") return "例：1";
-  if (["start", "end"].includes(key)) return "115/05/05";
-  if (key === "amount") return "1800/m";
+  if (["contractYears", "stage1Years", "stage2Years"].includes(key)) return "例：1";
+  if (["start", "end", "stage1Start", "stage1End", "stage2Start", "stage2End"].includes(key)) return "115/05/05";
+  if (["amount", "stage2Amount"].includes(key)) return "1800/m";
   if (key === "deposit") return "6000/未退";
   if (key === "coNumber") return "例：12345678";
   if (key === "idNumber") return "例：A123456789";
@@ -1092,6 +1303,94 @@ function createSelectControl(key, label, row, options) {
       ${displayOptions.map((option) => `<option value="${escapeHtml(option)}"${value === option ? " selected" : ""}>${escapeHtml(option)}</option>`).join("")}
     </select>
   `;
+}
+
+function createContractDateControl(label, row, editing) {
+  const stageButton = editing
+    ? `<button type="button" class="contract-stage-toggle" data-stage-action="${isSecondStageActive(row) ? "remove" : "add"}">${isSecondStageActive(row) ? "移除第2段" : "＋第2段"}</button>`
+    : "";
+  if (!isSecondStageActive(row)) {
+    return `
+      <span class="contract-date-label"><b>${escapeHtml(label)}</b>${stageButton}</span>
+      <div class="date-inputs contract-date-inputs">
+        ${[
+          ["contractYears", "年數"],
+          ["start", "合約起始日期"],
+          ["end", "合約到期日"],
+        ]
+          .map(([nestedKey, nestedLabel]) => `
+            <label>
+              <small>${escapeHtml(nestedLabel)}</small>
+              <input name="${escapeHtml(nestedKey)}" value="${escapeHtml(row[nestedKey] || "")}"${placeholderForField(nestedKey) ? ` placeholder="${escapeHtml(placeholderForField(nestedKey))}"` : ""} autocomplete="off" />
+            </label>
+          `)
+          .join("")}
+      </div>
+    `;
+  }
+  const stageRows = [
+    ["stage1Years", "stage1Start", "stage1End"],
+    ["stage2Years", "stage2Start", "stage2End"],
+  ];
+  return `
+    <span class="contract-date-label"><b>${escapeHtml(label)}</b>${stageButton}</span>
+    <div class="contract-stage-stack">
+      ${stageRows
+        .map(([yearsKey, startKey, endKey]) => `
+          <div class="date-inputs contract-date-inputs contract-stage-row">
+            ${[
+              [yearsKey, "年數"],
+              [startKey, "合約起始日期"],
+              [endKey, "合約到期日"],
+            ]
+              .map(([nestedKey, nestedLabel]) => `
+                <label>
+                  <small>${escapeHtml(nestedLabel)}</small>
+                  <input name="${escapeHtml(nestedKey)}" value="${escapeHtml(row[nestedKey] || "")}"${placeholderForField(nestedKey) ? ` placeholder="${escapeHtml(placeholderForField(nestedKey))}"` : ""} autocomplete="off" />
+                </label>
+              `)
+              .join("")}
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
+}
+
+function enableSecondStage() {
+  if (!draftRow || !isEditing()) return;
+  draftRow.hasSecondStage = true;
+  draftRow.stage1Years = "";
+  draftRow.stage1Start = normalizeSlashRocDate(draftRow.start);
+  draftRow.stage1End = "";
+  draftRow.stage2Years = "";
+  draftRow.stage2Start = "";
+  draftRow.stage2End = normalizeSlashRocDate(draftRow.end);
+  draftRow.stage2Amount = "";
+  draftRow.stage2Kind = "price_change";
+  refreshPricingStages(draftRow);
+  renderMetrics(draftRow);
+  renderProfileForm(draftRow);
+  setDraftStatus();
+}
+
+function disableSecondStage() {
+  if (!draftRow || !isEditing()) return;
+  const hasEnteredData = [draftRow.stage1Years, draftRow.stage1End, draftRow.stage2Years, draftRow.stage2Start, draftRow.stage2Amount].some((value) => String(value || "").trim());
+  if (hasEnteredData && !window.confirm("確定移除第2段？這只會先改目前草稿，按儲存後才生效。")) return;
+  draftRow.hasSecondStage = false;
+  draftRow.stage1Years = "";
+  draftRow.stage1Start = "";
+  draftRow.stage1End = "";
+  draftRow.stage2Years = "";
+  draftRow.stage2Start = "";
+  draftRow.stage2End = "";
+  draftRow.stage2Amount = "";
+  draftRow.stage2Kind = "";
+  draftRow.pricingStages = [];
+  renderMetrics(draftRow);
+  renderProfileForm(draftRow);
+  setDraftStatus();
 }
 
 function renderProfileForm(row) {
@@ -1122,7 +1421,7 @@ function renderProfileForm(row) {
       syncContractFields(control.name);
       syncVisibleContractControls();
       if (control.name === "company") detailCompany.textContent = control.value || "新增客戶";
-      if (["item", "cycle", "start", "end", "contractYears", "amount", "pricePlan"].includes(control.name)) renderMetrics(draftRow);
+      if (["item", "cycle", "start", "end", "contractYears", "amount", "pricePlan", "stage1Years", "stage1Start", "stage1End", "stage2Years", "stage2Start", "stage2End", "stage2Amount"].includes(control.name)) renderMetrics(draftRow);
       setDraftStatus();
     };
     control.addEventListener("input", updateDraft);
@@ -1174,7 +1473,10 @@ function renderProfileForm(row) {
           nestedFields ? (groupMode === "inline" ? "inline-field" : "date-field") : "",
           groupMode === "contract" ? "compact-date-field" : "",
         ].filter(Boolean).join(" ");
-        if (nestedFields) {
+        if (key === "contractDates") {
+          field.classList.toggle("two-stage-date-field", isSecondStageActive(row));
+          field.innerHTML = createContractDateControl(label, row, editing);
+        } else if (nestedFields) {
           field.innerHTML = `
             <span>${escapeHtml(label)}</span>
             <div class="${[
@@ -1191,6 +1493,8 @@ function renderProfileForm(row) {
                 .join("")}
             </div>
           `;
+        } else if (key === "pricePlan" && isSecondStageActive(row)) {
+          field.innerHTML = createTextControl("stage2Amount", "第2段金額", row);
         } else if (key === "cycle") {
           field.innerHTML = createSelectControl(key, label, row, cycleOptions);
         } else if (key === "category") {
@@ -1208,6 +1512,12 @@ function renderProfileForm(row) {
         field.querySelectorAll("input, select, textarea").forEach((control) => {
           bindControl(control);
           if (control.tagName === "TEXTAREA") resizeProfileTextarea(control);
+        });
+        field.querySelectorAll("[data-stage-action]").forEach((button) => {
+          button.addEventListener("click", () => {
+            if (button.dataset.stageAction === "add") enableSecondStage();
+            else disableSecondStage();
+          });
         });
         markSpecialValues(field);
         sectionEl.append(field);

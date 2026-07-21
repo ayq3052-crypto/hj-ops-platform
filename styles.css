@@ -1274,6 +1274,55 @@ body[data-venue="taichung"] .record-card.active .record-id {
   min-height: 70px;
 }
 
+.date-field.compact-date-field.two-stage-date-field {
+  min-height: 126px;
+}
+
+.contract-date-label {
+  align-items: flex-start !important;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.contract-date-label b {
+  font: inherit;
+}
+
+.contract-stage-toggle {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--field-label-accent) 32%, var(--line));
+  border-radius: 7px;
+  background: #fff;
+  color: var(--field-label-accent);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  padding: 7px 5px;
+}
+
+.contract-stage-toggle:hover,
+.contract-stage-toggle:focus-visible {
+  border-color: var(--field-label-accent);
+  outline: none;
+}
+
+.contract-stage-stack {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.contract-stage-row {
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.contract-stage-row + .contract-stage-row {
+  border-top: 1px solid var(--line);
+}
+
 .date-inputs,
 .inline-inputs {
   display: grid;
