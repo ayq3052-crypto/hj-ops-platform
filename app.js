@@ -226,7 +226,7 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
       inferPricePlanFromText(row?.notes)
   ).trim();
   const normalized = {
-    id: String(row?.id || "").trim(),
+    id: normalizeCustomerIdForLookup(row?.id),
     name: String(row?.name || "").trim(),
     company: String(row?.company || row?.companyName || "").trim(),
     category: String(row?.category || "").trim(),
@@ -391,15 +391,17 @@ function getVenueRows(venue = activeVenue, year = activeYear) {
 
 function getRowKey(row) {
   if (!row) return "";
-  return row.uid || `${row.venue || activeVenue}:${row.folder || "active"}:${row.id || row.name || row.company || ""}`;
+  return row.uid || `${row.venue || activeVenue}:${row.folder || "active"}:${normalizeCustomerIdForLookup(row.id) || row.name || row.company || ""}`;
 }
 
 function displayId(row) {
-  return String(row?.id || "").trim() || "未編號";
+  return normalizeCustomerIdForLookup(row?.id) || "未編號";
 }
 
 function normalizeCustomerIdForLookup(value) {
-  return String(value || "").trim().toUpperCase();
+  if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
+  const raw = String(value || "").normalize("NFKC").trim();
+  return /^v\d*$/iu.test(raw) ? `V${raw.slice(1)}` : raw;
 }
 
 function resetContractDraft() {
@@ -1063,7 +1065,7 @@ function createTextControl(key, label, row) {
   }
   return `
     <span>${escapeHtml(label)}</span>
-    <input name="${escapeHtml(key)}" value="${escapeHtml(row[key] || "")}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""} autocomplete="off" />
+    <input name="${escapeHtml(key)}"${key === "id" ? " data-customer-id-input" : ""} value="${escapeHtml(row[key] || "")}"${placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : ""} autocomplete="off" />
   `;
 }
 
@@ -1110,6 +1112,9 @@ function renderProfileForm(row) {
     const updateDraft = () => {
       if (!isEditing()) return;
       if (control.tagName === "TEXTAREA") resizeProfileTextarea(control);
+      if (control.name === "id") {
+        control.value = normalizeCustomerIdForLookup(control.value);
+      }
       draftRow[control.name] = control.value;
       if (contractIdentityFields.has(control.name)) {
         control.classList.toggle("highlight-contract-id", Boolean(control.value.trim()));
@@ -1129,6 +1134,7 @@ function renderProfileForm(row) {
       control.value = formatted;
       updateDraft();
     });
+    if (control.name === "id") window.HJCustomerId?.bindInput(control);
   };
   const resizeProfileTextarea = (textarea) => {
     textarea.style.height = "auto";
@@ -1354,13 +1360,13 @@ function renderEmptyDetail() {
 }
 
 function getFilteredRows() {
-  const query = searchInput.value.trim().toLowerCase();
+  const query = String(searchInput.value || "").normalize("NFKC").trim().toLowerCase();
   const service = normalizeServiceFilter(activeService);
   const folderRows = crmRows.filter((row) => (row.folder || "active") === activeFolder);
   const serviceRows = service === "all" ? folderRows : folderRows.filter((row) => serviceType(row) === service);
   if (!query) return serviceRows;
   return serviceRows.filter((row) =>
-    [row.id, row.name, row.company, row.category, row.item, row.cycle].some((value) => String(value).toLowerCase().includes(query))
+    [normalizeCustomerIdForLookup(row.id), row.name, row.company, row.category, row.item, row.cycle].some((value) => String(value).normalize("NFKC").toLowerCase().includes(query))
   );
 }
 
@@ -1393,9 +1399,10 @@ function runPaymentAudit(trigger, options = {}) {
 
 async function saveDraft() {
   if (!draftRow || !isEditing()) return;
-  const nextId = (draftRow.id || "").trim();
+  const nextId = normalizeCustomerIdForLookup(draftRow.id);
+  draftRow.id = nextId;
   const currentIndex = crmRows.findIndex((row) => getRowKey(row) === selectedKey);
-  const duplicated = nextId && crmRows.some((row, index) => String(row.id || "").trim() === nextId && (editMode === "create" || index !== currentIndex));
+  const duplicated = nextId && crmRows.some((row, index) => normalizeCustomerIdForLookup(row.id) === nextId && (editMode === "create" || index !== currentIndex));
 
   if (!nextId) {
     setSaveState("編號不可空白", "error");
@@ -1430,7 +1437,7 @@ async function saveDraft() {
   setSaveState("正在儲存正式資料...", "saved");
   try {
     if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
-    await window.HJ_DB.saveCrmRow(nextRow);
+    await window.HJ_DB.saveCrmRow(nextRow, { year: activeYear });
   } catch (error) {
     console.error(error);
     setSaveState(`正式資料未儲存：${error.message || error}`, "error");
@@ -1472,7 +1479,7 @@ async function moveCurrentFolder() {
   setSaveState("正在儲存正式資料...", "saved");
   try {
     if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
-    await window.HJ_DB.saveCrmRow(nextRow);
+    await window.HJ_DB.saveCrmRow(nextRow, { year: activeYear });
   } catch (error) {
     console.error(error);
     setSaveState(`正式資料未儲存：${error.message || error}`, "error");
@@ -1499,8 +1506,8 @@ function deleteCurrentRow() {
     `刪除防呆：這會刪除 ${activeYear} 年度這一筆「${title}」。\n這只會刪除本機測試資料，不代表客戶結束。\n\n請輸入「${expected}」才會刪除。（不用輸入「編號」兩個字）`
   );
   if (typedId === null) return;
-  const normalizedTypedId = typedId.trim().replace(/^編號\s*/u, "");
-  if (normalizedTypedId !== expected) {
+  const normalizedTypedId = normalizeCustomerIdForLookup(typedId.trim().replace(/^編號\s*/u, ""));
+  if (normalizedTypedId !== normalizeCustomerIdForLookup(expected)) {
     setSaveState("刪除已取消：輸入的編號不一致", "error");
     return;
   }

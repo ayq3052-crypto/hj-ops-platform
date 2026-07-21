@@ -249,6 +249,7 @@ function normalizeAscii(value) {
 }
 
 function normalizeCustomerId(value) {
+  if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
   const raw = normalizeAscii(value).trim();
   return /^v/i.test(raw) ? raw.toUpperCase() : raw;
 }
@@ -444,7 +445,7 @@ function readBundledCrmRows(venue = activeVenue) {
 function mergeCrmRows(...rowGroups) {
   const seen = new Set();
   return rowGroups.flat().filter((row) => {
-    const id = String(row?.編號 || "").trim().toUpperCase();
+    const id = normalizeCustomerId(row?.編號);
     const start = normalizeComparableDate(row?.起始日期);
     const end = normalizeComparableDate(row?.合約到期日);
     const key = id && (start || end) ? `${id}|${start}|${end}` : id || `${normalizeLoose(crmCompanyName(row))}|${normalizeLoose(row?.姓名)}`;
@@ -1548,7 +1549,7 @@ function createClosingLookup() {
       <span>輸入編號、公司名稱或姓名</span>
     </div>
     <label class="closing-search">
-      <input id="closingLookupInput" type="search" placeholder="輸入編號 / 公司名稱 / 姓名" autocomplete="off" />
+      <input id="closingLookupInput" data-customer-id-input type="search" placeholder="輸入編號 / 公司名稱 / 姓名" autocomplete="off" />
       <button id="closingLookupButton" type="button">帶入</button>
     </label>
     <div class="closing-suggestions" id="closingSuggestions" aria-live="polite"></div>
@@ -3303,6 +3304,7 @@ function bindEvents() {
   );
 
   document.querySelector("#newCustomerId")?.addEventListener("input", () => {
+    window.HJCustomerId?.normalizeInput(document.querySelector("#newCustomerId"));
     cancelCrmAutoLookup();
     resetCrmCheckState();
   });
@@ -3323,6 +3325,7 @@ function bindEvents() {
 
   document.addEventListener("input", (event) => {
     if (event.target.id !== "closingLookupInput") return;
+    window.HJCustomerId?.normalizeInput(event.target);
     renderClosingSuggestions(event.target.value);
   });
 

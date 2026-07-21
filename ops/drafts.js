@@ -315,6 +315,7 @@ function normalizeCycleValue(value) {
 }
 
 function normalizeCustomerId(value) {
+  if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
   const raw = normalizePaymentValue(value);
   return /^v/i.test(raw) ? raw.toUpperCase() : raw;
 }

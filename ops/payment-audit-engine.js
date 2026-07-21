@@ -28,7 +28,9 @@
   }
 
   function customerId(row) {
-    return text(row?.customer_no || row?.contract_no || row?.id || row?.編號).toUpperCase();
+    const value = row?.customer_no || row?.contract_no || row?.id || row?.編號;
+    if (global.HJCustomerId?.normalize) return global.HJCustomerId.normalize(value);
+    return String(value || "").normalize("NFKC").trim().toUpperCase();
   }
 
   function cycleOf(row) {

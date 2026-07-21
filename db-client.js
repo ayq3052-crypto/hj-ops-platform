@@ -5,6 +5,8 @@
   let clientPromise = null;
   let platformDataPromise = null;
   let branchesPromise = null;
+  const crmStorageKey = "hj-crm-clean-v5-data-repair";
+  const crmYearSyncMarkerKey = "hj-crm-year-supabase-v1";
 
   const venueLabels = {
     taichung: "台中館",
@@ -21,6 +23,15 @@
   };
 
   const textOrEmpty = (value) => String(value ?? "").trim();
+  const normalizeCustomerNo = (value) => {
+    if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
+    const raw = String(value ?? "").normalize("NFKC").trim();
+    return /^v\d*$/iu.test(raw) ? `V${raw.slice(1)}` : raw;
+  };
+  const canonicalCustomerSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => ({
+    ...(row && typeof row === "object" ? row : {}),
+    id: customerNo,
+  });
 
   const isoToRoc = (value) => {
     if (!value) return "";
@@ -179,6 +190,14 @@
     return data || [];
   };
 
+  const queryOptional = async (table, select = "*") => {
+    const client = await getClient();
+    const { data, error } = await client.from(table).select(select);
+    if (error && ["PGRST205", "42P01"].includes(error.code)) return [];
+    if (error) throw error;
+    return data || [];
+  };
+
   const getBranches = async () => {
     if (!branchesPromise) {
       branchesPromise = queryAll("branches", "id,code,name").then((rows) => ({
@@ -205,7 +224,7 @@
     const monthly = contract?.monthly_amount ?? row.monthly_amount;
     const deposit = contract?.deposit_amount ?? row.deposit_amount;
     return {
-      id: textOrEmpty(row.customer_no),
+      id: normalizeCustomerNo(row.customer_no),
       name: textOrEmpty(row.customer_name),
       company: textOrEmpty(row.company_name),
       category: textOrEmpty(snapshot.category),
@@ -233,7 +252,7 @@
       sourceSystem: textOrEmpty(row.source_system),
       sourceSnapshot: snapshot,
       sourceFormat: "db",
-      uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${row.customer_no}`,
+      uid: row.source_row_key || `${row.branch_code}-${row.crm_status || "active"}-${String(index + 1).padStart(3, "0")}-${normalizeCustomerNo(row.customer_no)}`,
       contractYears: textOrEmpty(snapshot.contractYears) || contractYearsFromIso(contract?.start_date || row.contract_start, contract?.end_date || row.contract_end),
       contractTerm: textOrEmpty(snapshot.contractTerm),
       depositPolicy: textOrEmpty(contract?.deposit_policy),
@@ -242,6 +261,26 @@
       stampVersion: textOrEmpty(contract?.stamp_version),
     };
   };
+
+  const crmSourceWithVenues = (venues, activeVenue = "taichung") => ({
+    generatedAt: new Date().toISOString(),
+    activeVenue,
+    sources: {
+      taichung: {
+        label: "台中館",
+        sourceLabel: "Supabase 正式資料庫",
+        sourceLink: supabaseUrl,
+        idMode: "number",
+      },
+      huanrui: {
+        label: "環瑞館",
+        sourceLabel: "Supabase 正式資料庫",
+        sourceLink: supabaseUrl,
+        idMode: "v",
+      },
+    },
+    venues,
+  });
 
   const buildCrmSource = (customers, contracts = []) => {
     const contractByCustomer = new Map(contracts.map((contract) => [contract.customer_id, contract]));
@@ -253,25 +292,37 @@
         .map((row, index) => customerToCrmRow(row, index, contractByCustomer.get(row.id)));
       venues[venue] = { activeYear: "2026", years: { 2026: rows } };
     });
-    return {
-      generatedAt: new Date().toISOString(),
-      activeVenue: "taichung",
-      sources: {
-        taichung: {
-          label: "台中館",
-          sourceLabel: "Supabase 正式資料庫",
-          sourceLink: supabaseUrl,
-          idMode: "number",
-        },
-        huanrui: {
-          label: "環瑞館",
-          sourceLabel: "Supabase 正式資料庫",
-          sourceLink: supabaseUrl,
-          idMode: "v",
-        },
-      },
-      venues,
-    };
+    return crmSourceWithVenues(venues);
+  };
+
+  const buildCrmSourceFromYearRows = (yearRows, branches) => {
+    if (!Array.isArray(yearRows) || !yearRows.length) return null;
+    const venues = Object.fromEntries(Object.keys(venueLabels).map((venue) => [venue, { activeYear: "", years: {} }]));
+    yearRows
+      .slice()
+      .sort((left, right) => Number(left.year) - Number(right.year) || String(left.customer_no).localeCompare(String(right.customer_no), "zh-Hant", { numeric: true }))
+      .forEach((stored, index) => {
+        const venue = branches.byId[stored.branch_id]?.code;
+        if (!venues[venue]) return;
+        const year = String(stored.year);
+        const snapshot = stored.row_data && typeof stored.row_data === "object" ? stored.row_data : {};
+        const row = {
+          ...snapshot,
+          id: normalizeCustomerNo(snapshot.id || stored.customer_no),
+          folder: stored.folder === "ended" ? "ended" : "active",
+          venue,
+          uid: textOrEmpty(snapshot.uid || stored.source_row_key) || `${venue}-${year}-${String(index + 1).padStart(3, "0")}-${stored.customer_no}`,
+          sourceFormat: "db-year",
+        };
+        venues[venue].years[year] ||= [];
+        venues[venue].years[year].push(row);
+      });
+    Object.values(venues).forEach((venueData) => {
+      const years = Object.keys(venueData.years).sort((a, b) => Number(a) - Number(b));
+      venueData.activeYear = years.at(-1) || "2026";
+      venueData.years[venueData.activeYear] ||= [];
+    });
+    return crmSourceWithVenues(venues);
   };
 
   const paymentDbRowToLegacy = (row) => {
@@ -284,7 +335,7 @@
       ...snapshot,
       _dbId: textOrEmpty(row.id),
       section: textOrEmpty(row.section || snapshot.section || "待確認"),
-      id: textOrEmpty(row.customer_no || snapshot.id),
+      id: normalizeCustomerNo(row.customer_no || snapshot.id),
       name: textOrEmpty(row.customer_name || snapshot.name),
       company: textOrEmpty(row.company_name || snapshot.company),
       cycle: textOrEmpty(cycle),
@@ -336,7 +387,7 @@
       venue: ref.venue || ref.branch_code || row.branch_code,
       month: ref.month || sourceMonth,
       year: Number(ref.year || sourceYear) || sourceYear,
-      id: textOrEmpty(ref.id || ref.customer_no || row.customer_no),
+      id: normalizeCustomerNo(ref.id || ref.customer_no || row.customer_no),
     }));
     const dbStatus = String(row.status || "");
     const sourceStatus =
@@ -372,14 +423,16 @@
     if (!platformDataPromise) {
       platformDataPromise = (async () => {
         await ensureSession();
-        const [customers, contracts, paymentRows, drafts, settings] = await Promise.all([
+        const [customers, contracts, paymentRows, drafts, settings, crmYearRows, branches] = await Promise.all([
           queryAll("v_customers_current"),
           queryAll("v_contracts_current"),
           queryAll("v_payment_month_table"),
           queryAll("v_message_draft_queue"),
           queryAll("system_settings", "key,value"),
+          queryOptional("crm_year_rows"),
+          getBranches(),
         ]);
-        const crmSource = buildCrmSource(customers, contracts);
+        const crmSource = buildCrmSourceFromYearRows(crmYearRows, branches) || buildCrmSource(customers, contracts);
         const paymentGlobals = buildPaymentGlobals(paymentRows);
         const settingsByKey = Object.fromEntries((settings || []).map((row) => [row.key, row.value]));
         return {
@@ -394,6 +447,7 @@
             contracts: contracts.length,
             paymentRows: paymentRows.length,
             drafts: drafts.length,
+            crmYearRows: crmYearRows.length,
           },
         };
       })();
@@ -413,12 +467,18 @@
     return data;
   };
 
+  const refreshPlatformData = async () => {
+    platformDataPromise = null;
+    return loadPlatformData();
+  };
+
   const customerPayloadFromCrmRow = (row, branches) => {
     const branch = branches.byCode[row.venue || "taichung"];
-    if (!branch || !textOrEmpty(row.id)) return null;
+    const customerNo = normalizeCustomerNo(row.id);
+    if (!branch || !customerNo) return null;
     return {
       branch_id: branch.id,
-      customer_no: textOrEmpty(row.id),
+      customer_no: customerNo,
       legacy_no: textOrEmpty(row.uid) || null,
       customer_name: textOrEmpty(row.name) || null,
       company_name: textOrEmpty(row.company) || null,
@@ -438,7 +498,7 @@
       crm_status: row.folder === "ended" ? "ended" : "active",
       source_system: "web_crm",
       source_row_key: textOrEmpty(row.uid) || null,
-      source_snapshot: row,
+      source_snapshot: canonicalCustomerSnapshot(row, customerNo),
       notes: textOrEmpty(row.notes) || null,
     };
   };
@@ -461,6 +521,78 @@
     if (error) throw error;
   };
 
+  const crmYearPayloads = async (crmData, source = "web_crm") => {
+    const branches = await getBranches();
+    const customers = await queryAll("customers", "id,branch_id,customer_no");
+    const customerByKey = new Map(customers.map((customer) => [`${customer.branch_id}|${normalizeCustomerNo(customer.customer_no)}`, customer.id]));
+    const payloads = [];
+    Object.entries(crmData?.venues || {}).forEach(([venue, venueData]) => {
+      const branch = branches.byCode[venue];
+      if (!branch) return;
+      Object.entries(venueData?.years || {}).forEach(([year, rows]) => {
+        (rows || []).forEach((row) => {
+          const customerNo = normalizeCustomerNo(row.id);
+          if (!customerNo) return;
+          payloads.push({
+            branch_id: branch.id,
+            customer_id: customerByKey.get(`${branch.id}|${customerNo}`) || null,
+            year: Number(year),
+            customer_no: customerNo,
+            folder: row.folder === "ended" ? "ended" : "active",
+            source_row_key: textOrEmpty(row.uid) || null,
+            row_data: canonicalCustomerSnapshot({ ...row, venue }, customerNo),
+            source,
+          });
+        });
+      });
+    });
+    return payloads;
+  };
+
+  const upsertCrmYearPayloads = async (payloads) => {
+    const client = await getClient();
+    for (let index = 0; index < payloads.length; index += 400) {
+      const batch = payloads.slice(index, index + 400);
+      const { error } = await client.from("crm_year_rows").upsert(batch, { onConflict: "branch_id,year,customer_no" });
+      if (error) throw error;
+    }
+  };
+
+  const syncCrmYearData = async (crmData, options = {}) => {
+    const payloads = await crmYearPayloads(crmData, options.source || "web_crm");
+    if (!payloads.length) return { rows: 0 };
+    await upsertCrmYearPayloads(payloads);
+    localStorage.setItem(crmYearSyncMarkerKey, "ready");
+    platformDataPromise = null;
+    return { rows: payloads.length };
+  };
+
+  const saveCrmYearRow = async (row, year, customerId, branchId) => {
+    const customerNo = normalizeCustomerNo(row.id);
+    const payload = {
+      branch_id: branchId,
+      customer_id: customerId || null,
+      year: Number(year),
+      customer_no: customerNo,
+      folder: row.folder === "ended" ? "ended" : "active",
+      source_row_key: textOrEmpty(row.uid) || null,
+      row_data: canonicalCustomerSnapshot({ ...row, venue: row.venue || "taichung" }, customerNo),
+      source: "web_crm",
+    };
+    await upsertCrmYearPayloads([payload]);
+    localStorage.setItem(crmYearSyncMarkerKey, "ready");
+  };
+
+  const markCrmYearSyncPending = () => localStorage.removeItem(crmYearSyncMarkerKey);
+
+  const migrateLegacyCrmYears = async () => {
+    const raw = localStorage.getItem(crmStorageKey);
+    if (!raw || localStorage.getItem(crmYearSyncMarkerKey) === "ready") return { migrated: false, rows: 0 };
+    const parsed = JSON.parse(raw);
+    const result = await syncCrmYearData(parsed, { source: "legacy_browser_migration" });
+    return { migrated: true, rows: result.rows };
+  };
+
   const contractPayloadFromCrmRow = (row, customerId, branchId) => {
     const startDate = rocToIso(row.start);
     const endDate = rocToIso(row.end);
@@ -468,7 +600,7 @@
     return {
       customer_id: customerId,
       branch_id: branchId,
-      contract_no: textOrEmpty(row.id),
+      contract_no: normalizeCustomerNo(row.id),
       service_type: serviceTypeFromText(row.item, row.category),
       contract_status: row.folder === "ended" ? "ended" : "active",
       start_date: startDate,
@@ -479,13 +611,13 @@
       deposit_amount: numericMoney(row.deposit),
       metadata: {
         source_system: "web_crm",
-        source_snapshot: row,
+        source_snapshot: canonicalCustomerSnapshot(row),
       },
       notes: textOrEmpty(row.notes) || null,
     };
   };
 
-  const saveCrmRow = async (row) => {
+  const saveCrmRow = async (row, options = {}) => {
     const client = await getClient();
     const branches = await getBranches();
     const customerPayload = customerPayloadFromCrmRow(row, branches);
@@ -523,6 +655,8 @@
       }
     }
 
+    await saveCrmYearRow(row, Number(options.year) || new Date().getFullYear(), savedCustomer.id, savedCustomer.branch_id);
+
     platformDataPromise = null;
     return savedCustomer;
   };
@@ -537,7 +671,7 @@
   const paymentPayloadFromLegacy = (row, context, branches, customersByNo, index) => {
     const branch = branches.byCode[context.venue];
     if (!branch) return null;
-    const customerNo = textOrEmpty(row.id);
+    const customerNo = normalizeCustomerNo(row.id);
     const customer = customerNo ? customersByNo.get(customerNo) : null;
     return {
       branch_id: branch.id,
@@ -559,7 +693,7 @@
       reminder_state: /已通知|已貼/.test(String(row.note || "")) ? "posted_waiting" : "none",
       memo: textOrEmpty(row.note) || null,
       source_system: "manual",
-      source_snapshot: row,
+      source_snapshot: canonicalCustomerSnapshot(row, customerNo),
       metadata: {
         source_month_label: context.month,
         start: row.start || null,
@@ -582,7 +716,7 @@
       .select("id,customer_no")
       .eq("branch_id", branch.id);
     if (customersError) throw customersError;
-    const customersByNo = new Map((customers || []).map((customer) => [textOrEmpty(customer.customer_no), customer]));
+    const customersByNo = new Map((customers || []).map((customer) => [normalizeCustomerNo(customer.customer_no), customer]));
     const month = monthNumber(context.month);
     const payloadEntries = rows
       .map((sourceRow, index) => ({
@@ -611,7 +745,7 @@
       const rowKey = textOrEmpty(snapshot._rowKey);
       if (rowKey) return `key:${rowKey}`;
       return [
-        textOrEmpty(row.customer_no).toUpperCase(),
+        normalizeCustomerNo(row.customer_no),
         textOrEmpty(row.payment_cycle).toUpperCase(),
         textOrEmpty(metadata.start || snapshot.start),
         textOrEmpty(metadata.end || snapshot.end),
@@ -689,7 +823,7 @@
     ref.venue || ref.branch_code || "",
     ref.year || fallbackYear || 2026,
     ref.month || "",
-    textOrEmpty(ref.id || ref.customer_no),
+    normalizeCustomerNo(ref.id || ref.customer_no),
   ].join("|");
 
   const legacyPaymentRefKey = (ref = {}) => [
@@ -697,7 +831,7 @@
     ref.venue || ref.branch_code || "",
     "",
     ref.month || "",
-    textOrEmpty(ref.id || ref.customer_no),
+    normalizeCustomerNo(ref.id || ref.customer_no),
   ].join("|");
 
   const draftKeysFromMetadata = (metadata = {}, fallbackId = "") => {
@@ -728,10 +862,10 @@
       venue: ref.venue || item.venue || "taichung",
       month: ref.month || item.month || null,
       year: Number(ref.year || sourceYear) || sourceYear,
-      id: textOrEmpty(ref.id || item.id),
+      id: normalizeCustomerNo(ref.id || item.id),
     }));
     const itemMetadata = {
-      source_id: textOrEmpty(item.id),
+      source_id: normalizeCustomerNo(item.id),
       source_status: "follow",
       source_year: sourceYear,
       source_month: textOrEmpty(item.month) || null,
@@ -784,7 +918,7 @@
       year: Number(match[1]),
       venue: match[2],
       month: Number(match[3]),
-      customerNo: match[4],
+      customerNo: normalizeCustomerNo(match[4]),
     };
   };
 
@@ -837,15 +971,20 @@
   };
 
   window.HJ_DB = {
+    normalizeCustomerNo,
     getClient,
     getSession,
     ensureSession,
     signInOrSignUp,
     signOut,
     loadPlatformData,
+    refreshPlatformData,
     applyPlatformGlobals,
     installLocalStorageSync,
     clearLegacyLocalDataForDb,
+    migrateLegacyCrmYears,
+    syncCrmYearData,
+    markCrmYearSyncPending,
     saveCrmRow,
     markDraftItemNotified,
   };

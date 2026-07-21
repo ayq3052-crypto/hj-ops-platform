@@ -359,7 +359,8 @@
         </nav>
       </section>
     </main>
-    <script src="./db-client.js?v=20260708-draft-snooze-1"></script>
+    <script src="./ops/customer-id.js?v=20260721-canonical-v-1"></script>
+    <script src="./db-client.js?v=20260721-canonical-v-1"></script>
     <script>
       const allowedAccountHashes = [
         "98a145809a5c9c8bec786adb9a7a9822f587adb0d650ab0b55ae89939458197f",
@@ -705,6 +706,7 @@
       }
 
       function normalizeCustomerId(value) {
+        if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
         const raw = normalizePaymentText(value);
         return /^v/i.test(raw) ? raw.toUpperCase() : raw;
       }

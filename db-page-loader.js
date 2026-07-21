@@ -1,9 +1,9 @@
 (() => {
   const pageScripts = {
-    crm: ["./ops/payment-audit-engine.js?v=20260717-audit-1", "./app.js?v=20260713-crm-formal-save-1"],
-    contracts: ["./contracts.js?v=20260709-contract-date-input-1"],
-    payments: ["./ops/payment-audit-engine.js?v=20260718-service-section-1", "./ops/payments.js?v=20260719-web-crm-formal-2"],
-    drafts: ["./ops/drafts.js?v=20260708-draft-official-1"],
+    crm: ["./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./app.js?v=20260721-canonical-v-1"],
+    contracts: ["./contracts.js?v=20260721-canonical-v-1"],
+    payments: ["./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./ops/payments.js?v=20260721-canonical-v-1"],
+    drafts: ["./ops/drafts.js?v=20260721-canonical-v-1"],
   };
 
   const statusText = {
@@ -62,9 +62,16 @@
     try {
       await window.HJ_DB.ensureSession();
       await window.HJ_DB.applyPlatformGlobals();
+      window.HJCustomerId?.install(document);
+      const crmMigration = await window.HJ_DB.migrateLegacyCrmYears();
+      if (crmMigration.migrated) {
+        await window.HJ_DB.refreshPlatformData();
+        await window.HJ_DB.applyPlatformGlobals();
+      }
       window.HJ_DB.clearLegacyLocalDataForDb();
       if (page !== "payments") window.HJ_DB.installLocalStorageSync();
       for (const script of pageScripts[page]) await loadScript(script);
+      window.HJCustomerId?.install(document);
       // Payments repairs its local working copy during bootstrap. Persist only after that setup is complete.
       if (page === "payments") window.HJ_DB.installLocalStorageSync();
       hideStateSoon();

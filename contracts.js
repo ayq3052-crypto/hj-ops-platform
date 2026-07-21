@@ -325,11 +325,13 @@ function getVisibleRows(folder = activeFolder) {
 }
 
 function displayId(row) {
-  return String(row?.id || "").trim() || "未編號";
+  return normalizeId(row?.id) || "未編號";
 }
 
 function normalizeId(value) {
-  return String(value || "").trim().toUpperCase();
+  if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
+  const raw = String(value || "").normalize("NFKC").trim();
+  return /^v\d*$/iu.test(raw) ? `V${raw.slice(1)}` : raw;
 }
 
 function getVenueDefaults(venue = activeVenue) {
@@ -1642,10 +1644,10 @@ function renderShell() {
 }
 
 function renderList() {
-  const query = searchInput.value.trim().toLowerCase();
+  const query = String(searchInput.value || "").normalize("NFKC").trim().toLowerCase();
   const rows = getVisibleRows().filter((row) => {
     if (!query) return true;
-    return [row.id, row.name, row.company, row.item, row.cycle].some((value) => String(value).toLowerCase().includes(query));
+    return [normalizeId(row.id), row.name, row.company, row.item, row.cycle].some((value) => String(value).normalize("NFKC").toLowerCase().includes(query));
   });
 
   recordCount.textContent = `${rows.length} 筆`;
