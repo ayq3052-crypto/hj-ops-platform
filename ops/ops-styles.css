@@ -3520,3 +3520,49 @@ svg {
   }
 
 }
+.smart-test-safety {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0;
+  padding: 11px 16px;
+  border: 2px solid #d59b22;
+  border-radius: 12px;
+  background: #fff8df;
+  color: #674b0b;
+}
+
+.smart-test-safety strong { white-space: nowrap; }
+
+.smart-test-preview {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid #78aaa4;
+  border-radius: 10px;
+  background: #f3fbf9;
+}
+
+.smart-test-preview span { line-height: 1.7; }
+
+.smart-test-preview button {
+  justify-self: start;
+  border: 1px solid #327b73;
+  border-radius: 9px;
+  background: #e0f4ef;
+  color: #195b54;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.smart-test-manual-editor {
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+}
+
+.smart-test-manual-editor strong,
+.smart-test-manual-editor button,
+.smart-test-manual-editor small { grid-column: 1 / -1; }
+
+.smart-test-manual-editor label { display: grid; gap: 4px; font-weight: 700; }
+.smart-test-manual-editor input { min-width: 0; border: 1px solid #bacbc8; border-radius: 7px; padding: 7px; }

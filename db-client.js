@@ -28,7 +28,31 @@
     const raw = String(value ?? "").normalize("NFKC").trim();
     return /^v\d*$/iu.test(raw) ? `V${raw.slice(1)}` : raw;
   };
-  const canonicalCustomerSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => ({
+  const canonicalRocDate = (value) => {
+    const raw = textOrEmpty(value);
+    if (!raw) return "";
+    if (window.HJRocDate?.normalize) return window.HJRocDate.normalize(raw);
+    const match = raw.normalize("NFKC").match(/^(\d{2,4})\s*[\/.-]\s*(\d{1,2})\s*[\/.-]\s*(\d{1,2})$/);
+    if (!match) return raw;
+    const enteredYear = Number(match[1]);
+    const rocYear = enteredYear >= 1911 ? enteredYear - 1911 : enteredYear;
+    return `${rocYear}/${String(Number(match[2])).padStart(2, "0")}/${String(Number(match[3])).padStart(2, "0")}`;
+  };
+  const canonicalCustomerSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => {
+    const snapshot = { ...(row && typeof row === "object" ? row : {}), id: customerNo };
+    ["start", "end", "signedAt", "birthday", "stage1Start", "stage1End", "stage2Start", "stage2End"].forEach((key) => {
+      if (snapshot[key]) snapshot[key] = canonicalRocDate(snapshot[key]);
+    });
+    if (Array.isArray(snapshot.pricingStages)) {
+      snapshot.pricingStages = snapshot.pricingStages.map((stage) => ({
+        ...stage,
+        ...(stage?.start ? { start: canonicalRocDate(stage.start) } : {}),
+        ...(stage?.end ? { end: canonicalRocDate(stage.end) } : {}),
+      }));
+    }
+    return snapshot;
+  };
+  const historicalPaymentSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => ({
     ...(row && typeof row === "object" ? row : {}),
     id: customerNo,
   });
@@ -37,10 +61,12 @@
     if (!value) return "";
     const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (!match) return "";
-    return `${Number(match[1]) - 1911}/${Number(match[2])}/${Number(match[3])}`;
+    return `${Number(match[1]) - 1911}/${match[2]}/${match[3]}`;
   };
 
   const rocToIso = (value) => {
+    const parsed = window.HJRocDate?.parse?.(value);
+    if (parsed) return `${parsed.westernYear}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
     const match = String(value || "").match(/(\d{2,3})[/.年-](\d{1,2})[/.月-](\d{1,2})/);
     if (!match) return null;
     return `${Number(match[1]) + 1911}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
@@ -315,7 +341,7 @@
         const venue = branches.byId[stored.branch_id]?.code;
         if (!venues[venue]) return;
         const year = String(stored.year);
-        const snapshot = stored.row_data && typeof stored.row_data === "object" ? stored.row_data : {};
+        const snapshot = canonicalCustomerSnapshot(stored.row_data && typeof stored.row_data === "object" ? stored.row_data : {}, stored.customer_no);
         const row = {
           ...snapshot,
           id: normalizeCustomerNo(snapshot.id || stored.customer_no),
@@ -704,7 +730,7 @@
       reminder_state: /已通知|已貼/.test(String(row.note || "")) ? "posted_waiting" : "none",
       memo: textOrEmpty(row.note) || null,
       source_system: "manual",
-      source_snapshot: canonicalCustomerSnapshot(row, customerNo),
+      source_snapshot: historicalPaymentSnapshot(row, customerNo),
       metadata: {
         source_month_label: context.month,
         start: row.start || null,

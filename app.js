@@ -234,11 +234,11 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
   const storedStage1 = storedStages[0] && typeof storedStages[0] === "object" ? storedStages[0] : {};
   const storedStage2 = storedStages[1] && typeof storedStages[1] === "object" ? storedStages[1] : {};
   const stage1Years = String(row?.stage1Years || storedStage1.years || "").trim();
-  const stage1Start = String(row?.stage1Start || storedStage1.start || "").trim();
-  const stage1End = String(row?.stage1End || storedStage1.end || "").trim();
+  const stage1Start = normalizeSlashRocDate(row?.stage1Start || storedStage1.start || "");
+  const stage1End = normalizeSlashRocDate(row?.stage1End || storedStage1.end || "");
   const stage2Years = String(row?.stage2Years || storedStage2.years || "").trim();
-  const stage2Start = String(row?.stage2Start || storedStage2.start || "").trim();
-  const stage2End = String(row?.stage2End || storedStage2.end || "").trim();
+  const stage2Start = normalizeSlashRocDate(row?.stage2Start || storedStage2.start || "");
+  const stage2End = normalizeSlashRocDate(row?.stage2End || storedStage2.end || "");
   const stage2Amount = String(row?.stage2Amount || storedStage2.amount || "").trim();
   const hasSecondStage =
     row?.hasSecondStage === true ||
@@ -259,8 +259,8 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     category: String(row?.category || "").trim(),
     item: String(row?.item || "").trim(),
     cycle: normalizeCycleValue(row?.cycle || ""),
-    start: hasSecondStage ? stage1Start || String(row?.start || "").trim() : String(row?.start || "").trim(),
-    end: hasSecondStage ? stage2End || String(row?.end || "").trim() : String(row?.end || "").trim(),
+    start: hasSecondStage ? stage1Start || normalizeSlashRocDate(row?.start) : normalizeSlashRocDate(row?.start),
+    end: hasSecondStage ? stage2End || normalizeSlashRocDate(row?.end) : normalizeSlashRocDate(row?.end),
     contractYears: "",
     contractTerm: "",
     payDay: String(row?.payDay || "").trim(),
@@ -268,17 +268,17 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     pricePlan,
     hasSecondStage,
     stage1Years,
-    stage1Start: hasSecondStage ? stage1Start || String(row?.start || "").trim() : "",
+    stage1Start: hasSecondStage ? stage1Start || normalizeSlashRocDate(row?.start) : "",
     stage1End,
     stage2Years,
     stage2Start,
-    stage2End: hasSecondStage ? stage2End || String(row?.end || "").trim() : "",
+    stage2End: hasSecondStage ? stage2End || normalizeSlashRocDate(row?.end) : "",
     stage2Amount,
     stage2Kind: hasSecondStage ? "price_change" : "",
     deposit: String(row?.deposit || "").trim(),
     phone: String(row?.phone || "").trim(),
-    signedAt: String(row?.signedAt || "").trim(),
-    birthday: String(row?.birthday || "").trim(),
+    signedAt: normalizeSlashRocDate(row?.signedAt),
+    birthday: normalizeSlashRocDate(row?.birthday),
     address: String(row?.address || "").trim(),
     industry: rawIndustry === pricePlan ? "" : rawIndustry,
     notes: String(row?.notes || "").trim(),
@@ -637,6 +637,14 @@ function getNextCreatableYear() {
 }
 
 function parseRocDate(value) {
+  const shared = window.HJRocDate?.parse?.(value);
+  if (shared) {
+    return {
+      ...shared,
+      month: String(shared.month).padStart(2, "0"),
+      day: String(shared.day).padStart(2, "0"),
+    };
+  }
   const text = String(value || "").trim();
   const buildDate = (rocYear, month, day) => {
     const normalized = {
@@ -672,10 +680,13 @@ function parseRocDate(value) {
 }
 
 function formatRocDate(date) {
+  const shared = window.HJRocDate?.format?.(date);
+  if (shared) return shared;
   return `${date.rocYear}/${date.month}/${date.day}`;
 }
 
 function normalizeSlashRocDate(value) {
+  if (window.HJRocDate?.normalize) return window.HJRocDate.normalize(value);
   const parsed = parseRocDate(value);
   return parsed ? formatRocDate(parsed) : String(value || "").trim();
 }

@@ -1,8 +1,13 @@
 (() => {
   const pageScripts = {
-    crm: ["./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./app.js?v=20260721-crm-two-stage-1"],
+    crm: ["./ops/roc-date.js?v=20260721-canonical-date-1", "./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./app.js?v=20260721-canonical-date-1"],
     contracts: ["./contracts.js?v=20260721-canonical-v-1"],
-    payments: ["./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./ops/payments.js?v=20260721-canonical-v-1"],
+    payments: [
+      "./ops/roc-date.js?v=20260721-canonical-date-1",
+      "./ops/contract-pricing.js?v=20260721-structured-stage-1",
+      "./ops/payment-audit-engine.js?v=20260721-canonical-v-1",
+      "./ops/payments.js?v=20260721-structured-stage-1",
+    ],
     drafts: ["./ops/drafts.js?v=20260721-canonical-v-1"],
   };
 
@@ -60,6 +65,11 @@
     if (!page || !pageScripts[page]) return;
     showState(statusText[page] || "正在載入資料...");
     try {
+      const parameters = new URLSearchParams(window.location.search);
+      if (page === "crm" && parameters.get("isolated-test") === "1") {
+        await loadScript("./db-crm-test-adapter.js?v=20260721-shared-formal-crm-1");
+        document.title = "HJ 客戶資料｜隔離測試";
+      }
       await window.HJ_DB.ensureSession();
       await window.HJ_DB.applyPlatformGlobals();
       window.HJCustomerId?.install(document);

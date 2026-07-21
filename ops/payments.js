@@ -75,10 +75,12 @@ const crmCache = {};
 const webCrmPaymentBridgeKey = "hj-crm-payment-bridge-v1";
 const webCrmStorageKey = "hj-crm-clean-v5-data-repair";
 const suppressedPaymentRowsKey = "hjPaymentSuppressedRowsV1";
+const customerPaymentStopsKey = "hjPaymentCustomerStopsV1";
 const paymentBackfillStateKey = "hjPaymentBackfillStateV1";
 const paymentBackfillVersion = "20260718-authoritative-timeline-6";
 const paymentRowsCache = new Map();
 let suppressedPaymentRowsCache = null;
+let customerPaymentStopsCache = null;
 
 const yearPicker = document.querySelector("#yearPicker");
 const yearSelect = document.querySelector("#yearSelect");
@@ -319,6 +321,30 @@ function cancelCrmAutoLookup() {
   crmAutoLookupTimer = null;
 }
 
+function crmStructuredPricingFields(row) {
+  const pricingStages = Array.isArray(row?.pricingStages)
+    ? structuredClone(row.pricingStages)
+    : Array.isArray(row?.priceStages)
+      ? structuredClone(row.priceStages)
+      : [];
+  return {
+    hasSecondStage: row?.hasSecondStage === true || String(row?.hasSecondStage || "").toLowerCase() === "true",
+    stage1Years: String(row?.stage1Years || "").trim(),
+    stage1Start: normalizeComparableDate(row?.stage1Start),
+    stage1End: normalizeComparableDate(row?.stage1End),
+    stage2Years: String(row?.stage2Years || "").trim(),
+    stage2Start: normalizeComparableDate(row?.stage2Start),
+    stage2End: normalizeComparableDate(row?.stage2End),
+    stage2Amount: String(row?.stage2Amount || "").trim(),
+    stage2Kind: String(row?.stage2Kind || "").trim(),
+    pricingStages,
+  };
+}
+
+function hasStructuredPricingMetadata(row) {
+  return Boolean(window.HJContractPricing?.structuredStages?.(row));
+}
+
 async function fetchCrmRows(venue = activeVenue) {
   const source = window.HJ_CRM_SOURCE_DATA;
   const years = source?.venues?.[venue]?.years;
@@ -329,10 +355,11 @@ async function fetchCrmRows(venue = activeVenue) {
         公司名稱: String(row?.公司名稱 || row?.公司 || row?.companyName || row?.company || "").trim(),
         項目: String(row?.項目 || row?.item || "").trim(),
         繳費方式: String(row?.繳費方式 || row?.cycle || "").trim(),
-        起始日期: String(row?.起始日期 || row?.start || "").trim(),
-        合約到期日: String(row?.合約到期日 || row?.end || "").trim(),
+        起始日期: normalizeComparableDate(row?.起始日期 || row?.start),
+        合約到期日: normalizeComparableDate(row?.合約到期日 || row?.end),
         金額: String(row?.金額 || row?.amount || "").trim(),
         階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
+        ...crmStructuredPricingFields(row),
         _source: "web-crm-formal",
       })).filter(hasUsefulCrmData)
     : [];
@@ -376,10 +403,11 @@ function readPaymentBridgeRows(venue = activeVenue) {
         公司名稱: String(row?.companyName || row?.company || "").trim(),
         項目: String(row?.item || "").trim(),
         繳費方式: String(row?.cycle || "").trim(),
-        起始日期: String(row?.start || "").trim(),
-        合約到期日: String(row?.end || "").trim(),
+        起始日期: normalizeComparableDate(row?.start),
+        合約到期日: normalizeComparableDate(row?.end),
         金額: String(row?.amount || "").trim(),
         階段金額: String(row?.pricePlan || row?.stagedAmount || row?.階段金額 || "").trim(),
+        ...crmStructuredPricingFields(row),
         _source: "web-crm-bridge",
       }))
       .filter((row) => row.編號 || row.公司名稱 || row.姓名);
@@ -402,8 +430,8 @@ function readWebCrmRows(venue = activeVenue) {
         公司名稱: String(row?.companyName || row?.company || "").trim(),
         項目: String(row?.item || "").trim(),
         繳費方式: String(row?.cycle || "").trim(),
-        起始日期: String(row?.start || "").trim(),
-        合約到期日: String(row?.end || "").trim(),
+        起始日期: normalizeComparableDate(row?.start),
+        合約到期日: normalizeComparableDate(row?.end),
         金額: String(row?.amount || "").trim(),
         階段金額: String(
           row?.pricePlan ||
@@ -412,6 +440,7 @@ function readWebCrmRows(venue = activeVenue) {
             inferPricePlanFromText(row?.industry) ||
             inferPricePlanFromText(row?.notes)
         ).trim(),
+        ...crmStructuredPricingFields(row),
         _source: "web-crm",
       }))
       .filter((row) => row.編號 || row.公司名稱 || row.姓名);
@@ -433,10 +462,11 @@ function readBundledCrmRows(venue = activeVenue) {
       公司名稱: String(row?.公司名稱 || row?.公司 || row?.companyName || row?.company || "").trim(),
       項目: String(row?.項目 || row?.item || "").trim(),
       繳費方式: String(row?.繳費方式 || row?.cycle || "").trim(),
-      起始日期: String(row?.起始日期 || row?.start || "").trim(),
-      合約到期日: String(row?.合約到期日 || row?.end || "").trim(),
+      起始日期: normalizeComparableDate(row?.起始日期 || row?.start),
+      合約到期日: normalizeComparableDate(row?.合約到期日 || row?.end),
       金額: String(row?.金額 || row?.amount || "").trim(),
       階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
+      ...crmStructuredPricingFields(row),
       _source: "bundled-crm",
     }))
     .filter((row) => row.編號 || row.公司名稱 || row.姓名);
@@ -778,8 +808,11 @@ function rowFromRenewalCrm(item, previousRow) {
     cycle,
     start: String(item?.起始日期 || "").trim(),
     end: String(item?.合約到期日 || "").trim(),
-    price: normalizeMonthlyPrice(item?.金額 || previousRow.price || ""),
-    pricePlan: String(item?.階段金額 || previousRow.pricePlan || "").trim(),
+    price: normalizeMonthlyPrice(item?.金額 || ""),
+    // A renewed contract is a new CRM cycle. Never inherit staged pricing from
+    // the previous payment cycle when the new CRM cycle does not declare it.
+    pricePlan: String(item?.階段金額 || "").trim(),
+    ...crmStructuredPricingFields(item),
     paidDate: "",
     paidAmount: "",
     nextDate: "",
@@ -1129,6 +1162,50 @@ function isClosingSection(section) {
   return String(section || "").startsWith("待遷出");
 }
 
+function customerStopIdentity(row, venue = activeVenue) {
+  return `${venue}|${normalizeCustomerId(row?.id).toUpperCase()}`;
+}
+
+function readCustomerPaymentStops() {
+  if (customerPaymentStopsCache) return new Map(customerPaymentStopsCache);
+  try {
+    const entries = JSON.parse(localStorage.getItem(customerPaymentStopsKey) || "[]");
+    customerPaymentStopsCache = new Map(Array.isArray(entries) ? entries : []);
+  } catch {
+    customerPaymentStopsCache = new Map();
+  }
+  return new Map(customerPaymentStopsCache);
+}
+
+function saveCustomerPaymentStops(stops) {
+  customerPaymentStopsCache = new Map(stops);
+  clearPaymentRowsCache();
+  localStorage.setItem(customerPaymentStopsKey, JSON.stringify(Array.from(stops.entries())));
+}
+
+function setCustomerPaymentStop(row, venue = activeVenue, month = activeMonth, year = activeYear) {
+  const stopIndex = sheetMonthAbsoluteIndex(month, year);
+  const identity = customerStopIdentity(row, venue);
+  if (stopIndex === null || !identity.split("|")[1]) return;
+  const stops = readCustomerPaymentStops();
+  const existing = stops.get(identity);
+  if (existing === undefined || stopIndex < existing) {
+    stops.set(identity, stopIndex);
+    saveCustomerPaymentStops(stops);
+  }
+}
+
+function removeCustomerPaymentStop(row, venue = activeVenue) {
+  const stops = readCustomerPaymentStops();
+  if (stops.delete(customerStopIdentity(row, venue))) saveCustomerPaymentStops(stops);
+}
+
+function isAfterCustomerPaymentStop(row, venue = activeVenue, month = activeMonth, year = activeYear) {
+  const stopIndex = readCustomerPaymentStops().get(customerStopIdentity(row, venue));
+  const targetIndex = sheetMonthAbsoluteIndex(month, year);
+  return stopIndex !== undefined && targetIndex !== null && targetIndex > stopIndex;
+}
+
 function loadPaymentRows(venue = activeVenue, month = activeMonth, year = activeYear) {
   const cacheKey = paymentRowsCacheKey(venue, month, year);
   if (paymentRowsCache.has(cacheKey)) return cloneRows(paymentRowsCache.get(cacheKey));
@@ -1151,9 +1228,9 @@ function loadPaymentRows(venue = activeVenue, month = activeMonth, year = active
       );
       const repairedText = JSON.stringify(repaired);
       if (repairedText !== savedText) localStorage.setItem(storageKey, repairedText);
-      const merged = [...repaired];
+      const merged = repaired.filter((row) => !isAfterCustomerPaymentStop(row, venue, month, year));
       baseRows.forEach((baseRow) => {
-        if (!isSuppressedPaymentRow(baseRow, venue, month, year) && !merged.some((row) => sameCustomerPeriod(row, baseRow))) {
+        if (!isAfterCustomerPaymentStop(baseRow, venue, month, year) && !isSuppressedPaymentRow(baseRow, venue, month, year) && !merged.some((row) => sameCustomerPeriod(row, baseRow))) {
           merged.push(baseRow);
         }
       });
@@ -1173,7 +1250,7 @@ function loadPaymentRows(venue = activeVenue, month = activeMonth, year = active
   } catch {
     // Ignore broken local data and fall back to the sheet snapshot.
   }
-  const rows = baseRows.filter((row) => !isSuppressedPaymentRow(row, venue, month, year));
+  const rows = baseRows.filter((row) => !isAfterCustomerPaymentStop(row, venue, month, year) && !isSuppressedPaymentRow(row, venue, month, year));
   paymentRowsCache.set(cacheKey, cloneRows(rows));
   return rows;
 }
@@ -1199,17 +1276,18 @@ function loadBackfillSourceRows(venue = activeVenue, month = activeMonth, year =
         month,
         year,
       );
+      const activeSavedRows = savedRows.filter((row) => !isAfterCustomerPaymentStop(row, venue, month, year));
       baseRows.forEach((baseRow) => {
-        if (!isSuppressedPaymentRow(baseRow, venue, month, year) && !savedRows.some((row) => sameCustomerPeriod(row, baseRow))) {
-          savedRows.push(baseRow);
+        if (!isAfterCustomerPaymentStop(baseRow, venue, month, year) && !isSuppressedPaymentRow(baseRow, venue, month, year) && !activeSavedRows.some((row) => sameCustomerPeriod(row, baseRow))) {
+          activeSavedRows.push(baseRow);
         }
       });
-      return ensureRowKeys(normalizeSectionGroups(savedRows), venue, month, year);
+      return ensureRowKeys(normalizeSectionGroups(activeSavedRows), venue, month, year);
     }
   } catch {
     // Fall back to the built-in rows below.
   }
-  return baseRows;
+  return baseRows.filter((row) => !isAfterCustomerPaymentStop(row, venue, month, year));
 }
 
 function sameCustomerLoose(row, id, company) {
@@ -1287,7 +1365,7 @@ function repairSavedRows(rows, baseRows = baseRowsFor(), venue = activeVenue, mo
     if (pricePlan && !repairedRow.pricePlan) {
       repairedRow.pricePlan = pricePlan;
     }
-    if (isAutoGeneratedPaymentRow(repairedRow)) {
+    if (isAutoGeneratedPaymentRow(repairedRow) && !hasStructuredPricingMetadata(repairedRow)) {
       const stagedPrice = priceForRowAt(repairedRow, targetMonthFor(month, year));
       if (stagedPrice) repairedRow.price = stagedPrice;
     }
@@ -1816,6 +1894,7 @@ function moveRowToClosing(rowIndex) {
   row.previousYear = row.previousYear || activeYear;
   row.previousMonth = row.previousMonth || activeMonth;
   row.section = closingSectionForMonth();
+  setCustomerPaymentStop(row, activeVenue, activeMonth, activeYear);
   paymentRows.push(row);
   selectedRowIndex = paymentRows.length - 1;
   activeFilter = "all";
@@ -1909,6 +1988,8 @@ function restoreClosingRowToSource(row, targetSection = originalSectionForRow(ro
   restoredRow.section = targetSection;
   removeSuppressedPaymentRow(restoredRow, sourceVenue, sourceMonth, sourceYear);
   removeFutureGeneratedSuppressionsFor(restoredRow, sourceVenue, sourceMonth, sourceYear);
+  removeFutureCustomerSuppressionsFor(restoredRow, activeVenue, activeMonth, activeYear);
+  removeCustomerPaymentStop(restoredRow, sourceVenue);
 
   if (!isExternalSource) {
     return { external: false, row: restoredRow, targetSection };
@@ -1987,6 +2068,7 @@ function addExternalRowToClosing(match) {
   };
   const removedFutureRows = removeGeneratedFutureRowsFor(row);
   const suppressedFutureRows = suppressFutureBaseRowsFor(row);
+  setCustomerPaymentStop(row, activeVenue, activeMonth, activeYear);
   paymentRows.push(row);
   selectedRowIndex = paymentRows.length - 1;
   activeFilter = "all";
@@ -2215,6 +2297,14 @@ function priceForRowAt(row, target) {
   return target.absoluteIndex >= secondStageStartIndex ? plan.secondPrice : plan.firstPrice;
 }
 
+function generatedPriceResultForRowAt(row, target) {
+  if (window.HJContractPricing?.monthlyPriceAt) {
+    return window.HJContractPricing.monthlyPriceAt(row, target);
+  }
+  const display = priceForRowAt(row, target);
+  return display ? { display, stage: "legacy" } : { error: "CRM 金額無法判讀" };
+}
+
 function parseMinguoMonthIndex(value) {
   const match = normalizeAscii(value).match(/(\d{2,3})\s*[\\/.-]\s*(\d{1,2})/);
   if (!match) return null;
@@ -2263,12 +2353,12 @@ function makeNextPaymentRow(
   targetYear = activeYear,
   sourceYear = activeYear,
   sourceKind = "manual",
+  generatedPrice = "",
 ) {
-  const target = targetMonthFor(monthLabel, targetYear);
   return {
     ...row,
     _rowKey: autoNextRowKey(venue, monthLabel, targetYear),
-    price: priceForRowAt(row, target),
+    price: generatedPrice,
     paidDate: "",
     paidAmount: "",
     nextDate: nextDateForRowAt(row, monthLabel, targetYear),
@@ -2301,7 +2391,7 @@ function planFuturePaymentsForAddedCustomer(
   const cycleMonths = cycleMonthsFor(row);
   const currentMonthIndex = sheetMonthAbsoluteIndex(sourceMonth, sourceYear);
   if (!cycleMonths || currentMonthIndex === null || isClosingSection(row.section)) {
-    return { candidates: [], nextDate: "", stoppedForContract: false };
+    return { candidates: [], nextDate: "", stoppedForContract: false, error: "" };
   }
 
   const explicitFirstDueIndex = parseMinguoMonthIndex(options.firstDueDate);
@@ -2313,6 +2403,7 @@ function planFuturePaymentsForAddedCustomer(
   const optionLimit = Number.isFinite(options.limitIndex) ? options.limitIndex : null;
   const hardLimit = optionLimit ?? (endIndex !== null ? endIndex - 1 : monthAbsoluteIndexFor(sourceYear, 12));
   const candidates = [];
+  let error = "";
   let stoppedForContract = endIndex !== null && targetIndex >= endIndex;
   let guard = 0;
 
@@ -2325,15 +2416,30 @@ function planFuturePaymentsForAddedCustomer(
       break;
     }
     const target = minguoMonthFor(targetIndex);
-    const nextRow = makeNextPaymentRow(row, target.monthLabel, sourceMonth, venue, target.year, sourceYear, options.sourceKind);
+    const priceResult = generatedPriceResultForRowAt(row, target);
+    if (priceResult.error) {
+      error = priceResult.error;
+      break;
+    }
+    const nextRow = makeNextPaymentRow(
+      row,
+      target.monthLabel,
+      sourceMonth,
+      venue,
+      target.year,
+      sourceYear,
+      options.sourceKind,
+      priceResult.display,
+    );
     candidates.push({ venue, month: target.monthLabel, year: target.year, row: nextRow });
     targetIndex += cycleMonths;
   }
 
   return {
-    candidates,
-    nextDate: candidates[0] ? minguoMonthFor(sheetMonthAbsoluteIndex(candidates[0].month, candidates[0].year)).nextDate : "",
+    candidates: error ? [] : candidates,
+    nextDate: !error && candidates[0] ? minguoMonthFor(sheetMonthAbsoluteIndex(candidates[0].month, candidates[0].year)).nextDate : "",
     stoppedForContract,
+    error,
   };
 }
 
@@ -2345,6 +2451,7 @@ function generateFuturePaymentsForAddedCustomer(
   options = {},
 ) {
   const plan = planFuturePaymentsForAddedCustomer(row, venue, sourceMonth, sourceYear, options);
+  if (plan.error) return { created: 0, nextDate: "", stoppedForContract: false, error: plan.error };
   let created = 0;
   plan.candidates.forEach((candidate) => {
     ensurePaymentYearExists(candidate.venue, candidate.year);
@@ -2369,6 +2476,8 @@ function regenerateFuturePaymentsForRow(row, venue = activeVenue, sourceMonth = 
 }
 
 function normalizeComparableDate(value) {
+  const shared = window.HJRocDate?.normalize?.(value);
+  if (shared || !String(value || "").trim()) return shared || "";
   return normalizeAscii(value)
     .trim()
     .replaceAll("-", "/")
@@ -2470,6 +2579,7 @@ function addCustomerToCurrentMonth() {
     end: getValue("#newCustomerEnd"),
     price,
     pricePlan: String(crmCheckState.match?.階段金額 || "").trim(),
+    ...crmStructuredPricingFields(crmCheckState.match),
     paidDate: "",
     paidAmount: "",
     nextDate: "",
@@ -2492,10 +2602,21 @@ function addCustomerToCurrentMonth() {
     return;
   }
 
+  const currentPrice = generatedPriceResultForRowAt(newRow, targetMonthFor(activeMonth, activeYear));
+  if (currentPrice.error) {
+    showToast(`${currentPrice.error}，沒有新增任何資料`);
+    return;
+  }
+  newRow.price = currentPrice.display;
+
   const source = generationSourceForRow(newRow, activeMonth, activeYear);
   const plan = planFuturePaymentsForAddedCustomer(newRow, activeVenue, source.month, source.year, {
     sourceKind: "manual",
   });
+  if (plan.error) {
+    showToast(`${plan.error}，沒有新增任何資料`);
+    return;
+  }
   const previewRows = [
     `${activeYear}/${String(Number(String(activeMonth).replace(/[^\d]/g, ""))).padStart(2, "0")}　${newRow.section}　${newRow.cycle}`,
     ...plan.candidates.map((candidate) =>
@@ -2859,6 +2980,23 @@ function removeFutureGeneratedSuppressionsFor(row, venue = activeVenue, month = 
   generatedSuppressionRange(row, venue, month, year, false).forEach((target) => {
     const key = suppressedRowKeyFor(row, venue, target.monthLabel, target.year);
     if (!suppressed.delete(key)) return;
+    removed += 1;
+  });
+  if (removed) saveSuppressedPaymentRows(suppressed);
+  return removed;
+}
+
+function removeFutureCustomerSuppressionsFor(row, venue = activeVenue, month = activeMonth, year = activeYear) {
+  const sourceIndex = sheetMonthAbsoluteIndex(month, year);
+  const customerId = normalizeCustomerId(row?.id);
+  if (sourceIndex === null || !customerId) return 0;
+  const suppressed = readSuppressedPaymentRows();
+  let removed = 0;
+  Array.from(suppressed).forEach((key) => {
+    const [keyVenue, keyYear, keyMonth, keyCustomerId] = String(key).split("|");
+    const targetIndex = sheetMonthAbsoluteIndex(keyMonth, Number(keyYear));
+    if (keyVenue !== venue || keyCustomerId !== customerId || targetIndex === null || targetIndex <= sourceIndex) return;
+    suppressed.delete(key);
     removed += 1;
   });
   if (removed) saveSuppressedPaymentRows(suppressed);

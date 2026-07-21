@@ -6,10 +6,14 @@
     <title>Hour Jungle 客戶繳費表測試版</title>
     <link rel="icon" href="data:," />
     <script src="./auth-gate.js?v=20260629-payment-search-2"></script>
+    <script src="./ops/customer-id.js?v=20260721-canonical-v-1"></script>
     <link rel="stylesheet" href="./ops/ops-styles.css?v=20260709-payment-scroll-test-1" />
     <script>
       (() => {
-        const isLocalTest = window.location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+        const parameters = new URLSearchParams(window.location.search);
+        const forceFormalLoaderTest = parameters.has("formal-loader-test");
+        const localHost = window.location.protocol === "file:" || ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+        const useLiveLocalData = parameters.has("live-data") || (localHost && !forceFormalLoaderTest);
         const loadScript = (src) => new Promise((resolve, reject) => {
           const script = document.createElement("script");
           script.src = src;
@@ -17,48 +21,10 @@
           script.onerror = () => reject(new Error(`無法載入 ${src}`));
           document.head.appendChild(script);
         });
-        const demoRows = [
-          { id: "20", name: "劉怡廷", company: "吉爾哈登工作室", section: "年繳 / 2Y", cycle: "Y", start: "114/06/05", end: "115/06/05", price: "1500/m", paidDate: "6/9", paidAmount: "18000", nextDate: "116/06", invoice: "✔️", note: "續約" },
-          { id: "253", name: "張奉琦", company: "仁琦科技有限公司", section: "年繳 / 2Y", cycle: "2Y", start: "114/07/10", end: "116/07/10", price: "1350/m", note: "第2年" },
-          { id: "217", name: "劉基寅", company: "劉基寅建築師事務所", section: "辦公室", cycle: "M", start: "114/06/01", end: "119/06/01", price: "10880/m", paidDate: "6/2", paidAmount: "10880", nextDate: "115/07", invoice: "✔️" },
-          { id: "220", name: "吳銘", company: "沃土謙植有限公司", section: "營登", cycle: "6M", start: "113/07/10", end: "115/07/10", price: "1690/m", note: "合約到期，先確認續約" },
-          { id: "238", name: "莊心瑜", company: "安田有限公司", section: "營登", cycle: "Y", start: "114/07/08", end: "115/07/08", price: "1800/m", note: "已貼待追" },
-          { id: "263", name: "劉翁昌", company: "自由座", section: "自由座", cycle: "M", start: "114/11/11", end: "-", price: "3000/m", note: "劉先生" },
-        ];
-        for (let index = 1; index <= 18; index += 1) {
-          demoRows.push({
-            id: String(300 + index),
-            name: `測試客戶${index}`,
-            company: `捲動測試有限公司${index}`,
-            section: index % 5 === 0 ? "自由座" : "營登",
-            cycle: index % 5 === 0 ? "M" : "6M",
-            start: "114/07/10",
-            end: index % 5 === 0 ? "-" : "116/07/10",
-            price: index % 5 === 0 ? "3000/m" : "1800/m",
-            note: index % 4 === 0 ? "已貼待追" : "",
-          });
-        }
-        const completeDemoRows = demoRows.map((row) => ({
-          paidDate: "",
-          paidAmount: "",
-          nextDate: "",
-          invoice: "",
-          manualStatus: "normal",
-          note: "",
-          ...row,
-        }));
-        if (!isLocalTest) document.documentElement.dataset.dbPage = "payments";
-        if (isLocalTest) {
-          window.hjDefaultPaymentRows = completeDemoRows;
-          window.hjImportedPaymentData = {
-            taichung: { "7月": completeDemoRows },
-            huanrui: { "7月": completeDemoRows.slice(0, 10) },
-          };
-        }
         document.addEventListener("DOMContentLoaded", async () => {
-          const scripts = isLocalTest
-            ? ["./ops/payments.js?v=20260709-payment-scroll-test-1"]
-            : ["./db-client.js?v=20260702-cycle-regenerate-1", "./db-page-loader.js?v=20260702-cycle-regenerate-1"];
+          const scripts = useLiveLocalData
+            ? ["./db-page-loader-local-formal.js"]
+            : ["./db-client.js?v=20260719-payment-insert-only-1", "./db-page-loader-smart-test.js"];
           for (const src of scripts) await loadScript(src);
         }, { once: true });
       })();
@@ -67,6 +33,10 @@
   </head>
   <body class="payment-scroll-test-page">
     <div class="app-shell sheet-shell">
+      <aside class="smart-test-safety" aria-label="測試資料安全狀態">
+        <strong>隔離測試版</strong>
+        <span>正式繳費資料唯讀｜預覽不新增｜測試新增不寫入正式資料｜尚不可取代正式頁：2027 人工欄位保留尚未完成</span>
+      </aside>
       <header class="topbar">
         <div class="brand">
           <a class="home-brand-link" href="./home.html" aria-label="回主畫面" data-tooltip="回主畫面">
@@ -78,7 +48,7 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <a class="source-chip" href="./crm.html?venue=taichung">
+          <a class="source-chip" href="./crm.html?isolated-test=1&amp;venue=taichung" target="_blank" rel="noopener">
             <i data-lucide="list-checks"></i>
             <span>CRM客戶資料</span>
           </a>
@@ -197,7 +167,7 @@
             </div>
             <label class="search-box sheet-search">
               <i data-lucide="search"></i>
-              <input id="paymentSearch" type="search" placeholder="搜尋編號、公司、姓名、狀態" />
+              <input id="paymentSearch" data-customer-id-input type="search" placeholder="搜尋編號、公司、姓名、狀態" />
             </label>
             <div class="sheet-heading-actions">
               <button class="add-customer-toggle" id="todayReset" type="button">顯示全部</button>
@@ -215,7 +185,7 @@
             <button class="add-customer-close" id="closeAddCustomerPanel" type="button">關閉</button>
             <label class="add-customer-id">
               <span>編號</span>
-              <input id="newCustomerId" type="text" autocomplete="off" />
+              <input id="newCustomerId" data-customer-id-input type="text" autocomplete="off" />
             </label>
             <label class="add-customer-name">
               <span>姓名</span>
