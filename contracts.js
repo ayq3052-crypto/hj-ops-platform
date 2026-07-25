@@ -103,6 +103,9 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     idNumber: String(row?.idNumber || row?.identityNumber || "").trim(),
     folder: row?.folder || fallbackFolder,
     venue,
+    cycleState: String(row?.cycleState || row?.cycle_state || "historical").trim(),
+    contractPeriod: Number(row?.contractPeriod || row?.contract_period) || 0,
+    isCurrentContract: row?.isCurrentContract !== false,
     uid: row?.uid || `${venue}-${fallbackFolder}-${String(index + 1).padStart(3, "0")}-${row?.id || "no-id"}`,
   };
 }
@@ -168,8 +171,9 @@ function normalizeCrmData(data) {
     });
     if (!Object.keys(years).length) years[initialYear] = [];
     const sortedYears = Object.keys(years).sort((a, b) => Number(a) - Number(b));
+    const todayYear = String(new Date().getFullYear());
     venues[venue] = {
-      activeYear: years[venueData.activeYear] ? venueData.activeYear : sortedYears[0],
+      activeYear: years[todayYear] ? todayYear : years[venueData.activeYear] ? venueData.activeYear : sortedYears[0],
       years,
     };
   });
@@ -183,9 +187,8 @@ function normalizeCrmData(data) {
       const currentRows = cloneRows(venues[venue].years?.[year] || [], venue);
       venues[venue].years[year] = mergeSourceRows(sourceRows, currentRows);
     });
-    if (sourceVenue.activeYear && venues[venue].years[sourceVenue.activeYear]) {
-      venues[venue].activeYear = sourceVenue.activeYear;
-    }
+    const todayYear = String(new Date().getFullYear());
+    if (venues[venue].years[todayYear]) venues[venue].activeYear = todayYear;
   });
 
   const active = venues[data.activeVenue] ? data.activeVenue : sourceData.activeVenue || Object.keys(venues)[0] || "taichung";
@@ -232,7 +235,10 @@ function getRows(venue = activeVenue, year = activeYear) {
 }
 
 function getFolderRows(folder = activeFolder) {
-  return getRows().filter((row) => (row.folder || "active") === folder);
+  return getRows().filter((row) => {
+    if (["legacy_generated", "invalidated", "draft"].includes(row.cycleState)) return false;
+    return (row.folder || "active") === folder;
+  });
 }
 
 function serviceType(row) {

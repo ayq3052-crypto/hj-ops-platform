@@ -38,7 +38,6 @@
             <select id="yearSelect"></select>
           </label>
           <button class="year-nav" id="nextYearButton" type="button">下一年 →</button>
-          <button class="create-year" id="createYearButton" type="button">建立新年度</button>
         </div>
       </section>
 
@@ -101,6 +100,7 @@
                   <button id="addContractButton" type="button" hidden>連結既有合約</button>
                   <button class="secondary" id="addBlankContractButton" type="button" hidden>新增空白合約</button>
                   <button class="secondary" id="editButton" type="button">修改</button>
+                  <button class="secondary" id="renewButton" type="button">建立續約</button>
                   <button class="secondary" id="cancelButton" type="button" hidden>取消</button>
                   <button id="saveButton" type="button">儲存</button>
                   <button class="move" id="moveFolderButton" type="button">移到結束</button>
@@ -148,7 +148,8 @@
       </section>
     </main>
     <script src="./ops/customer-id.js?v=20260721-canonical-v-1"></script>
-    <script src="./db-client.js?v=20260721-crm-two-stage-1"></script>
-    <script src="./db-page-loader.js?v=20260721-shared-formal-crm-1"></script>
+    <script src="./ops/crm-cycle.js?v=20260725-formal-swap-1"></script>
+    <script src="./db-client.js?v=20260725-formal-swap-1"></script>
+    <script src="./db-page-loader.js?v=20260725-formal-swap-1"></script>
   </body>
 </html>

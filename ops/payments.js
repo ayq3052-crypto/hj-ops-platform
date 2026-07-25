@@ -65,6 +65,8 @@ let crmCheckState = {
   key: "",
   status: "idle",
   match: null,
+  mode: "new",
+  sourceRowKey: "",
 };
 let crmAutoLookupTimer = null;
 let yearActionLocked = false;
@@ -123,6 +125,26 @@ function scanStoredPaymentYears(venue) {
   return Array.from(years).sort((a, b) => Number(a) - Number(b));
 }
 
+function scanCrmPaymentYears(venue) {
+  const years = new Set();
+  const venueData = (window.HJ_CRM_SOURCE_DATA || window.hjCrmSourceData)?.venues?.[venue];
+  Object.entries(venueData?.years || {}).forEach(([sourceYear, rows]) => {
+    (rows || []).forEach((row) => {
+      if (row?.isProjection === true) return;
+      const eligible = window.HJCrmCycle?.isPaymentEligible
+        ? window.HJCrmCycle.isPaymentEligible(row, sourceYear, Number(currentGregorianYear))
+        : row?.folder !== "ended";
+      if (!eligible) return;
+      const coveredYears = window.HJCrmCycle?.coveredYears?.(row) || [];
+      coveredYears.forEach((year) => {
+        const normalized = normalizeYear(year);
+        if (Number(normalized) >= initialPaymentYear) years.add(normalized);
+      });
+    });
+  });
+  return Array.from(years).sort((a, b) => Number(a) - Number(b));
+}
+
 function readPaymentYearState() {
   const fallback = {
     activeYear: String(initialPaymentYear),
@@ -141,6 +163,7 @@ function readPaymentYearState() {
           ...fallback.years[venue],
           ...(Array.isArray(saved.years?.[venue]) ? saved.years[venue].map(normalizeYear) : []),
           ...scanStoredPaymentYears(venue),
+          ...scanCrmPaymentYears(venue),
         ]),
       ).sort((a, b) => Number(a) - Number(b));
     });
@@ -187,6 +210,17 @@ function ensurePaymentYearExists(venue = activeVenue, year = activeYear) {
 
 function ensurePaymentYearExistsForAll(year = activeYear) {
   return venueKeys.map((venue) => ensurePaymentYearExists(venue, year));
+}
+
+function syncPaymentYearsFromCrm() {
+  venueKeys.forEach((venue) => {
+    scanCrmPaymentYears(venue).forEach((year) => ensurePaymentYearExists(venue, year));
+  });
+  renderYearSelect();
+  return {
+    activeYear: String(activeYear),
+    years: Object.fromEntries(venueKeys.map((venue) => [venue, [...getYears(venue)]])),
+  };
 }
 
 function activeYearForVenue(venue = activeVenue) {
@@ -256,6 +290,17 @@ function normalizeCustomerId(value) {
   return /^v/i.test(raw) ? raw.toUpperCase() : raw;
 }
 
+function crmVenueHasCustomerId(id, venue = activeVenue) {
+  const normalizedId = normalizeCustomerId(id);
+  const venueData = (window.HJ_CRM_SOURCE_DATA || window.hjCrmSourceData)?.venues?.[venue];
+  return Object.values(venueData?.years || {}).some((rows) =>
+    (rows || []).some((row) =>
+      row?.folder !== "ended"
+      && normalizeCustomerId(row?.id || row?.customerNo || row?.customer_no) === normalizedId
+    )
+  );
+}
+
 function venueIdErrorMessage(id, venue = activeVenue) {
   const normalizedId = normalizeCustomerId(id);
   if (!normalizedId) return "";
@@ -263,8 +308,8 @@ function venueIdErrorMessage(id, venue = activeVenue) {
   if (venue === "taichung" && isVId) {
     return "V 開頭是環瑞館編號，不能新增到台中館。";
   }
-  if (venue === "huanrui" && !isVId && normalizedId !== "211") {
-    return "環瑞館只接受 V 開頭編號；211 是例外。";
+  if (venue === "huanrui" && !isVId && !crmVenueHasCustomerId(normalizedId, venue)) {
+    return "環瑞館新編號只接受 V 開頭；既有 CRM 客戶沿用原編號。";
   }
   return "";
 }
@@ -278,11 +323,13 @@ function currentCrmCheckKey() {
   ].join("|");
 }
 
-function setCrmCheckState(status, title, text, match = null) {
+function setCrmCheckState(status, title, text, match = null, context = {}) {
   crmCheckState = {
     key: status === "found" ? currentCrmCheckKey() : "",
     status,
     match,
+    mode: context.mode === "renewal" ? "renewal" : "new",
+    sourceRowKey: String(context.sourceRowKey || ""),
   };
 
   const panel = document.querySelector("#crmCheckPanel");
@@ -345,11 +392,23 @@ function hasStructuredPricingMetadata(row) {
   return Boolean(window.HJContractPricing?.structuredStages?.(row));
 }
 
+function isPaymentEligibleCrmRow(row, year) {
+  return window.HJCrmCycle?.isPaymentEligible?.(row, year) ?? (row?.folder || "active") === "active";
+}
+
+function crmCycleFields(row, year) {
+  return {
+    _crmYear: Number(year) || 0,
+    _cycleState: String(row?.cycleState || row?.cycle_state || "historical").trim(),
+    _contractPeriod: Number(row?.contractPeriod || row?.contract_period) || 0,
+  };
+}
+
 async function fetchCrmRows(venue = activeVenue) {
   const source = window.HJ_CRM_SOURCE_DATA;
   const years = source?.venues?.[venue]?.years;
   const rows = years && typeof years === "object"
-    ? Object.values(years).flat().map((row) => ({
+    ? Object.entries(years).flatMap(([year, yearRows]) => (yearRows || []).filter((row) => isPaymentEligibleCrmRow(row, year)).map((row) => ({
         編號: String(row?.編號 || row?.id || "").trim(),
         姓名: String(row?.姓名 || row?.name || "").trim(),
         公司名稱: String(row?.公司名稱 || row?.公司 || row?.companyName || row?.company || "").trim(),
@@ -360,11 +419,12 @@ async function fetchCrmRows(venue = activeVenue) {
         金額: String(row?.金額 || row?.amount || "").trim(),
         階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
         ...crmStructuredPricingFields(row),
+        ...crmCycleFields(row, year),
         _source: "web-crm-formal",
-      })).filter(hasUsefulCrmData)
+      }))).filter(hasUsefulCrmData)
     : [];
   if (!rows.length) throw new Error("目前沒有讀到網頁版 CRM 正式資料");
-  return rows;
+  return mergeCrmRows(rows);
 }
 
 function readCrmRowsSync(venue = activeVenue) {
@@ -395,9 +455,8 @@ function readPaymentBridgeRows(venue = activeVenue) {
     const data = JSON.parse(localStorage.getItem(webCrmPaymentBridgeKey) || "null");
     const years = data?.venues?.[venue]?.years;
     if (!years || typeof years !== "object") return [];
-    return Object.values(years)
-      .flat()
-      .map((row) => ({
+    return Object.entries(years)
+      .flatMap(([year, yearRows]) => (yearRows || []).filter((row) => isPaymentEligibleCrmRow(row, year)).map((row) => ({
         編號: String(row?.id || "").trim(),
         姓名: String(row?.name || "").trim(),
         公司名稱: String(row?.companyName || row?.company || "").trim(),
@@ -408,8 +467,9 @@ function readPaymentBridgeRows(venue = activeVenue) {
         金額: String(row?.amount || "").trim(),
         階段金額: String(row?.pricePlan || row?.stagedAmount || row?.階段金額 || "").trim(),
         ...crmStructuredPricingFields(row),
+        ...crmCycleFields(row, year),
         _source: "web-crm-bridge",
-      }))
+      })))
       .filter((row) => row.編號 || row.公司名稱 || row.姓名);
   } catch {
     return [];
@@ -421,10 +481,8 @@ function readWebCrmRows(venue = activeVenue) {
     const data = JSON.parse(localStorage.getItem(webCrmStorageKey) || "null");
     const years = data?.venues?.[venue]?.years;
     if (!years || typeof years !== "object") return [];
-    return Object.values(years)
-      .flat()
-      .filter((row) => (row?.folder || "active") === "active")
-      .map((row) => ({
+    return Object.entries(years)
+      .flatMap(([year, yearRows]) => (yearRows || []).filter((row) => isPaymentEligibleCrmRow(row, year)).map((row) => ({
         編號: String(row?.id || "").trim(),
         姓名: String(row?.name || "").trim(),
         公司名稱: String(row?.companyName || row?.company || "").trim(),
@@ -441,8 +499,9 @@ function readWebCrmRows(venue = activeVenue) {
             inferPricePlanFromText(row?.notes)
         ).trim(),
         ...crmStructuredPricingFields(row),
+        ...crmCycleFields(row, year),
         _source: "web-crm",
-      }))
+      })))
       .filter((row) => row.編號 || row.公司名稱 || row.姓名);
   } catch {
     return [];
@@ -453,9 +512,11 @@ function readBundledCrmRows(venue = activeVenue) {
   const legacyRows = Array.isArray(window.hjCrmSourceData?.rows?.[venue]) ? window.hjCrmSourceData.rows[venue] : [];
   const source = window.HJ_CRM_SOURCE_DATA || window.hjCrmSourceData;
   const years = source?.venues?.[venue]?.years;
-  const bundledRows = years && typeof years === "object" ? Object.values(years).flat() : [];
+  const bundledRows = years && typeof years === "object"
+    ? Object.entries(years).flatMap(([year, yearRows]) => (yearRows || []).filter((row) => isPaymentEligibleCrmRow(row, year)).map((row) => ({ ...row, _crmYear: year })))
+    : [];
   return [...legacyRows, ...bundledRows]
-    .filter((row) => (row?.folder || "active") === "active")
+    .filter((row) => isPaymentEligibleCrmRow(row, row._crmYear))
     .map((row) => ({
       編號: String(row?.編號 || row?.id || "").trim(),
       姓名: String(row?.姓名 || row?.name || "").trim(),
@@ -467,6 +528,7 @@ function readBundledCrmRows(venue = activeVenue) {
       金額: String(row?.金額 || row?.amount || "").trim(),
       階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
       ...crmStructuredPricingFields(row),
+      ...crmCycleFields(row, row._crmYear),
       _source: "bundled-crm",
     }))
     .filter((row) => row.編號 || row.公司名稱 || row.姓名);
@@ -774,6 +836,13 @@ function isNewerCrmPeriod(item, row) {
 function findRenewalCrmMatch(rows, row) {
   return rows
     .filter((item) => crmMatchesInput(item, row.id, row.name, row.company))
+    .filter((item) => {
+      const state = String(item?._cycleState || item?.cycleState || "").trim();
+      if (["legacy_generated", "invalidated", "draft"].includes(state)) return false;
+      if (item?.isProjection === true || item?.isCurrentContract === false) return false;
+      return window.HJCrmCycle?.isConfirmed?.(item, item?._crmYear)
+        ?? ["historical", "confirmed"].includes(state);
+    })
     .filter((item) => isNewerCrmPeriod(item, row))
     .sort((a, b) => {
       const sourceDiff = (b?._source === "web-crm-bridge" ? 1 : 0) - (a?._source === "web-crm-bridge" ? 1 : 0);
@@ -1008,9 +1077,6 @@ function shouldAutofillNextDate(row, month = activeMonth, year = activeYear) {
 
 function normalizeRowForMonth(row, venue = activeVenue, month = activeMonth, year = activeYear) {
   normalizeRowSemantics(row, venue);
-  if (shouldAutofillNextDate(row, month, year)) {
-    row.nextDate = nextDateForRowAt(row, month, year);
-  }
   if (isContractConfirmationRow(row, month, year) && !hasContractConfirmationNote(row)) {
     row.note = prioritizeContractConfirmationNote(
       `${contractConfirmationNote}${row.note ? `；${row.note}` : ""}`,
@@ -1369,9 +1435,6 @@ function repairSavedRows(rows, baseRows = baseRowsFor(), venue = activeVenue, mo
       const stagedPrice = priceForRowAt(repairedRow, targetMonthFor(month, year));
       if (stagedPrice) repairedRow.price = stagedPrice;
     }
-    if (repairedRow.id === "259") {
-      repairedRow.invoice = "✔️";
-    }
     const noteText = String(repairedRow.note || "").trim();
     const needsExistingCustomerCheck =
       noteText === "新辦" || (noteText === "新循環" && String(repairedRow._rowKey || "").includes("|manual|"));
@@ -1400,6 +1463,30 @@ function repairSavedRows(rows, baseRows = baseRowsFor(), venue = activeVenue, mo
 
 function savePaymentRows() {
   saveRowsFor(activeVenue, activeMonth, paymentRows, activeYear);
+}
+
+async function confirmPaymentRowsSaved() {
+  const flush = window.HJ_DB?.flushPendingWrites;
+  if (typeof flush !== "function") return { verified: false, isolated: true };
+  return flush();
+}
+
+async function savePaymentRowsConfirmed() {
+  savePaymentRows();
+  return confirmPaymentRowsSaved();
+}
+
+function showPaymentSaveFailure(error) {
+  console.error("繳費資料尚未存入資料庫", error);
+  showToast("資料庫尚未存成功；內容已保留，請勿關閉並稍後重試");
+}
+
+function markPaymentRowDbDirty(row, ...fields) {
+  if (!row || !row._dbId) return;
+  row._dbDirtyFields = Array.from(new Set([
+    ...(Array.isArray(row._dbDirtyFields) ? row._dbDirtyFields : []),
+    ...fields.filter(Boolean),
+  ]));
 }
 
 let paymentRows = loadPaymentRows();
@@ -1534,10 +1621,69 @@ function getVisibleRows() {
   });
 }
 
+function annualPaymentSearchMatches(term, venue = activeVenue, year = activeYear) {
+  const query = normalizeAscii(term).trim().toLowerCase();
+  if (!query) return [];
+  const grouped = new Map();
+  monthLabels.forEach((month, monthIndex) => {
+    loadPaymentRows(venue, month, year).forEach((row) => {
+      const id = normalizeCustomerId(row?.id);
+      const name = String(row?.name || "").trim();
+      const company = String(row?.company || "").trim();
+      const matches = [id, name, company].some((value) =>
+        normalizeAscii(value).trim().toLowerCase().includes(query)
+      );
+      if (!matches) return;
+      const key = `${id.toLowerCase()}|${company || name}`;
+      const result = grouped.get(key) || { id, company: company || name, months: new Set() };
+      result.months.add(monthIndex + 1);
+      grouped.set(key, result);
+    });
+  });
+  return Array.from(grouped.values())
+    .map((row) => ({ ...row, months: Array.from(row.months).sort((a, b) => a - b) }))
+    .sort((left, right) =>
+      Number(normalizeCustomerId(right.id).toLowerCase() === query) -
+        Number(normalizeCustomerId(left.id).toLowerCase() === query) ||
+      String(left.id).localeCompare(String(right.id), "zh-Hant", { numeric: true })
+    );
+}
+
+function ensureAnnualPaymentSearchHint() {
+  let hint = document.querySelector("#annualPaymentSearchHint");
+  if (hint) return hint;
+  const search = document.querySelector("#paymentSearch");
+  if (!search) return null;
+  hint = document.createElement("output");
+  hint.id = "annualPaymentSearchHint";
+  hint.className = "annual-payment-search-hint";
+  hint.hidden = true;
+  search.closest(".sheet-search")?.insertAdjacentElement("afterend", hint);
+  return hint;
+}
+
+function renderAnnualPaymentSearchHint() {
+  const hint = ensureAnnualPaymentSearchHint();
+  if (!hint) return;
+  if (!searchTerm) {
+    hint.hidden = true;
+    hint.textContent = "";
+    return;
+  }
+  const matches = annualPaymentSearchMatches(searchTerm);
+  hint.hidden = false;
+  hint.textContent = matches.length
+    ? matches.slice(0, 3).map((row) =>
+      `${row.id}｜${row.company}｜在 ${row.months.map((month) => `${month}月`).join("、")}`
+    ).join("；")
+    : "本年度查無資料";
+}
+
 function clearPaymentSearch() {
   searchTerm = "";
   const search = document.querySelector("#paymentSearch");
   if (search) search.value = "";
+  renderAnnualPaymentSearchHint();
 }
 
 function renderMetrics() {
@@ -1616,6 +1762,7 @@ function renderRows() {
     container.appendChild(createClosingLookup());
   }
 
+  renderAnnualPaymentSearchHint();
 }
 
 function createClosingLookup() {
@@ -1683,10 +1830,55 @@ function hasFutureNextPayment(row, month = activeMonth, year = activeYear) {
 function isContractConfirmationRow(row, month = activeMonth, year = activeYear) {
   if (!row || isClosingSection(row.section) || isNonBillableRow(row)) return false;
   if (row.renewalProcessed) return false;
+  if (hasEstablishedFollowingCycle(row)) return false;
   if (hasContractConfirmationNote(row)) return true;
   const target = targetMonthFor(month, year);
   if (!target || !reachesOrPassesContractEnd(row, target)) return false;
   return !hasFutureNextPayment(row, month, year);
+}
+
+function hasEstablishedFollowingCycle(row, venue = activeVenue) {
+  const customerId = normalizeCustomerId(row?.id);
+  const company = String(row?.company || "").trim();
+  const oldEnd = parseCompleteValidRocDate(row?.end);
+  if ((!customerId && !company) || !oldEnd) return false;
+
+  return getYears(venue).some((candidateYear) =>
+    monthLabels.some((candidateMonth) =>
+      rawPaymentRowsForCycleCheck(venue, candidateMonth, candidateYear).some((candidate) => {
+        if (candidate === row || isClosingSection(candidate?.section)) return false;
+        const sameCustomer =
+          (customerId && normalizeCustomerId(candidate?.id) === customerId) ||
+          (company && String(candidate?.company || "").trim() === company);
+        if (!sameCustomer) return false;
+        if (hasContractConfirmationNote(candidate)) return false;
+        const candidateStart = parseCompleteValidRocDate(candidate?.start);
+        if (!candidateStart) return false;
+        const followsOldCycle =
+          candidateStart.absoluteDay === oldEnd.absoluteDay ||
+          candidateStart.absoluteDay === oldEnd.absoluteDay + 1;
+        if (!followsOldCycle) return false;
+        return !sameCustomerPeriod(candidate, row);
+      }),
+    ),
+  );
+}
+
+function rawPaymentRowsForCycleCheck(venue, month, year) {
+  const importedRows = window.hjImportedPaymentDataByYear?.[venue]?.[String(year)]?.[month];
+  const baseRows = Array.isArray(importedRows)
+    ? importedRows
+    : Number(year) === initialPaymentYear
+      ? paymentData[venue]?.[month] || []
+      : [];
+  let savedRows = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(paymentStorageKeyFor(venue, month, year)) || "null");
+    if (Array.isArray(saved)) savedRows = saved;
+  } catch {
+    savedRows = [];
+  }
+  return [...baseRows, ...savedRows];
 }
 
 function contractReminderMessage(row) {
@@ -1807,6 +1999,7 @@ async function smartFillRenewalFromCrm() {
       `CRM 已找到續約：${match.編號 || ""} ${crmCompanyName(match) || match.姓名 || ""}`,
       `${crmSourceLabel(match)}：${crmCheckSummary(match)}。確認預覽後才會新增，既有列不會修改。`,
       match,
+      { mode: "renewal", sourceRowKey: targetRowKey },
     );
     showToast(`${nextRow.id} 續約資料已帶入新增表單，尚未寫入`);
     return true;
@@ -1860,6 +2053,7 @@ function isWorkspaceToolClick(target) {
 function updateSelectedRow(field, value) {
   if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return;
   paymentRows[selectedRowIndex][field] = value;
+  markPaymentRowDbDirty(paymentRows[selectedRowIndex], field);
   savePaymentRows();
   renderMetrics();
   renderRows();
@@ -1870,6 +2064,7 @@ function updateSelectedRowBasic(field, value) {
   if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return;
   const selectedKey = paymentRows[selectedRowIndex]._rowKey;
   paymentRows[selectedRowIndex][field] = value;
+  markPaymentRowDbDirty(paymentRows[selectedRowIndex], field);
   if (field === "section") {
     paymentRows = normalizeSectionGroups(paymentRows);
     selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === selectedKey);
@@ -1880,7 +2075,7 @@ function updateSelectedRowBasic(field, value) {
   renderEditor();
 }
 
-function moveRowToClosing(rowIndex) {
+async function moveRowToClosing(rowIndex) {
   if (rowIndex === null || !paymentRows[rowIndex]) return;
 
   const [row] = paymentRows.splice(rowIndex, 1);
@@ -1894,12 +2089,25 @@ function moveRowToClosing(rowIndex) {
   row.previousYear = row.previousYear || activeYear;
   row.previousMonth = row.previousMonth || activeMonth;
   row.section = closingSectionForMonth();
+  markPaymentRowDbDirty(
+    row,
+    "section",
+    "previousSection",
+    "previousVenue",
+    "previousYear",
+    "previousMonth",
+  );
   setCustomerPaymentStop(row, activeVenue, activeMonth, activeYear);
   paymentRows.push(row);
   selectedRowIndex = paymentRows.length - 1;
   activeFilter = "all";
   clearPaymentSearch();
-  savePaymentRows();
+  try {
+    await savePaymentRowsConfirmed();
+  } catch (error) {
+    showPaymentSaveFailure(error);
+    return;
+  }
   renderMetrics();
   renderRows();
   renderEditor();
@@ -1910,7 +2118,7 @@ function moveRowToClosing(rowIndex) {
   });
 }
 
-function restoreSelectedFromClosing() {
+async function restoreSelectedFromClosing() {
   if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return;
   const row = paymentRows[selectedRowIndex];
   const targetSection = originalSectionForRow(row);
@@ -1918,9 +2126,22 @@ function restoreSelectedFromClosing() {
 
   const [movingRow] = paymentRows.splice(selectedRowIndex, 1);
   const restored = restoreClosingRowToSource(movingRow, targetSection);
+  markPaymentRowDbDirty(
+    restored.row,
+    "section",
+    "previousSection",
+    "previousVenue",
+    "previousYear",
+    "previousMonth",
+  );
 
   if (restored.external) {
-    savePaymentRows();
+    try {
+      await savePaymentRowsConfirmed();
+    } catch (error) {
+      showPaymentSaveFailure(error);
+      return;
+    }
     ensurePaymentYearExistsForAll(restored.sourceYear);
     setActiveYearForAllVenues(restored.sourceYear);
     activeVenue = restored.sourceVenue;
@@ -1951,7 +2172,12 @@ function restoreSelectedFromClosing() {
   selectedRowIndex = insertIndex;
   activeFilter = "all";
   clearPaymentSearch();
-  savePaymentRows();
+  try {
+    await savePaymentRowsConfirmed();
+  } catch (error) {
+    showPaymentSaveFailure(error);
+    return;
+  }
   renderMetrics();
   renderRows();
   renderEditor();
@@ -2042,7 +2268,7 @@ function moveOrSelectClosingRow(rowIndex) {
   moveRowToClosing(rowIndex);
 }
 
-function addExternalRowToClosing(match) {
+async function addExternalRowToClosing(match) {
   if (!match?.row) return;
   const existsIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, match.row));
   if (existsIndex >= 0) {
@@ -2073,7 +2299,12 @@ function addExternalRowToClosing(match) {
   selectedRowIndex = paymentRows.length - 1;
   activeFilter = "all";
   clearPaymentSearch();
-  savePaymentRows();
+  try {
+    await savePaymentRowsConfirmed();
+  } catch (error) {
+    showPaymentSaveFailure(error);
+    return;
+  }
   renderMetrics();
   renderRows();
   renderEditor();
@@ -2361,10 +2592,38 @@ function makeNextPaymentRow(
     price: generatedPrice,
     paidDate: "",
     paidAmount: "",
-    nextDate: nextDateForRowAt(row, monthLabel, targetYear),
+    nextDate: "",
     invoice: "",
     manualStatus: "",
     note: `由${generatedSourceLabel(sourceYear, sourceMonth)}${generatedNoteAction(row, sourceKind)}自動帶入`,
+  };
+}
+
+function renewalReminderCandidateFor(row, venue = activeVenue) {
+  if (!row || isClosingSection(row.section)) return { candidate: null, error: "" };
+  const end = parseCompleteValidRocDate(row.end);
+  if (!end) return { candidate: null, error: "CRM 合約到期日期無法判讀" };
+  const target = minguoMonthFor(monthAbsoluteIndexFor(end.rocYear + 1911, end.monthNumber));
+  const priceResult = generatedPriceResultForRowAt(row, target);
+  if (priceResult.error) return { candidate: null, error: priceResult.error };
+  return {
+    error: "",
+    candidate: {
+      venue,
+      month: target.monthLabel,
+      year: target.year,
+      row: {
+        ...row,
+        _rowKey: autoNextRowKey(venue, target.monthLabel, target.year),
+        price: priceResult.display,
+        paidDate: "",
+        paidAmount: "",
+        nextDate: "",
+        invoice: "",
+        manualStatus: "",
+        note: contractConfirmationNote,
+      },
+    },
   };
 }
 
@@ -2460,10 +2719,6 @@ function generateFuturePaymentsForAddedCustomer(
     }
   });
 
-  if (plan.nextDate && !row.nextDate) {
-    row.nextDate = plan.nextDate;
-  }
-
   return { created, nextDate: plan.nextDate, stoppedForContract: plan.stoppedForContract };
 }
 
@@ -2522,7 +2777,7 @@ function clearNewCustomerForm() {
   resetCrmCheckState();
 }
 
-function addCustomerToCurrentMonth() {
+async function addCustomerToCurrentMonth() {
   const id = normalizeCustomerId(getValue("#newCustomerId"));
   const idInput = document.querySelector("#newCustomerId");
   if (idInput) idInput.value = id;
@@ -2587,9 +2842,18 @@ function addCustomerToCurrentMonth() {
     manualStatus: "",
     note: getValue("#newCustomerNote") || (isExistingCustomer ? "新循環" : "新辦"),
   };
+  const isRenewalImport = crmCheckState.mode === "renewal";
+  const renewalSourceRow = isRenewalImport
+    ? paymentRows.find((row) => row._rowKey === crmCheckState.sourceRowKey)
+    : null;
+  if (isRenewalImport && !renewalSourceRow) {
+    showToast("原本的到期列已變動，請重新選取並智慧帶入");
+    resetCrmCheckState();
+    return;
+  }
 
   const duplicateIndex = paymentRows.findIndex((row) => sameCustomerPeriod(row, newRow));
-  if (duplicateIndex >= 0) {
+  if (duplicateIndex >= 0 && !isRenewalImport) {
     showToast(`${id} 這個合約期間已在 ${activeMonth}，沒有新增或改動任何資料`);
     return;
   }
@@ -2617,17 +2881,28 @@ function addCustomerToCurrentMonth() {
     showToast(`${plan.error}，沒有新增任何資料`);
     return;
   }
+  const reminderPlan = renewalReminderCandidateFor(newRow, activeVenue);
+  if (reminderPlan.error) {
+    showToast(`${reminderPlan.error}，沒有新增任何資料`);
+    return;
+  }
   const previewRows = [
-    `${activeYear}/${String(Number(String(activeMonth).replace(/[^\d]/g, ""))).padStart(2, "0")}　${newRow.section}　${newRow.cycle}`,
+    ...(!isRenewalImport
+      ? [`${activeYear}/${String(Number(String(activeMonth).replace(/[^\d]/g, ""))).padStart(2, "0")}　${newRow.section}　${newRow.cycle}`]
+      : []),
     ...plan.candidates.map((candidate) =>
       `${candidate.year}/${String(Number(String(candidate.month).replace(/[^\d]/g, ""))).padStart(2, "0")}　${candidate.row.section}　${candidate.row.cycle}`
     ),
+    ...(reminderPlan.candidate
+      ? [`${reminderPlan.candidate.year}/${String(Number(String(reminderPlan.candidate.month).replace(/[^\d]/g, ""))).padStart(2, "0")}　合約到期提醒`]
+      : []),
   ];
   const confirmed = window.confirm(
     [
       `確認新增 ${id} ${company}`,
       `合約：${newRow.start} ～ ${newRow.end}`,
       `共 ${previewRows.length} 筆，只新增不存在的列，不修改任何既有列：`,
+      ...(isRenewalImport ? ["本次續約收款沿用目前到期列，不另增重複列。"] : []),
       "",
       ...previewRows,
     ].join("\n"),
@@ -2637,20 +2912,39 @@ function addCustomerToCurrentMonth() {
     return;
   }
 
-  paymentRows.push(newRow);
-  paymentRows = normalizeSectionGroups(paymentRows);
-  selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === newRow._rowKey);
-  savePaymentRows();
+  if (!isRenewalImport) {
+    paymentRows.push(newRow);
+    paymentRows = normalizeSectionGroups(paymentRows);
+    selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === newRow._rowKey);
+    savePaymentRows();
+  }
   let created = 0;
   plan.candidates.forEach((candidate) => {
     ensurePaymentYearExists(candidate.venue, candidate.year);
     if (addGeneratedRowToMonth(candidate.venue, candidate.month, candidate.row, candidate.year)) created += 1;
   });
+  if (reminderPlan.candidate) {
+    ensurePaymentYearExists(reminderPlan.candidate.venue, reminderPlan.candidate.year);
+    if (addGeneratedRowToMonth(
+      reminderPlan.candidate.venue,
+      reminderPlan.candidate.month,
+      reminderPlan.candidate.row,
+      reminderPlan.candidate.year,
+    )) created += 1;
+  }
   runPaymentAudit("payment-smart-import-after", { venue: activeVenue, year: activeYear });
+  try {
+    await confirmPaymentRowsSaved();
+  } catch (error) {
+    showPaymentSaveFailure(error);
+    return;
+  }
   clearNewCustomerForm();
   closeAddCustomerPanel();
   renderAll();
-  let toast = `${id} 已新增本月 1 筆`;
+  let toast = isRenewalImport
+    ? `${id} 本期沿用原到期列`
+    : `${id} 已新增本月 1 筆`;
   if (created) toast += `，並依預覽新增後續 ${created} 筆`;
   if (plan.stoppedForContract) toast += "，合約到期月份未建立";
   showToast(toast);
@@ -3003,7 +3297,7 @@ function removeFutureCustomerSuppressionsFor(row, venue = activeVenue, month = a
   return removed;
 }
 
-function deleteSelectedPaymentRow() {
+async function deleteSelectedPaymentRow() {
   if (selectedRowIndex === null || !paymentRows[selectedRowIndex]) return;
   const row = paymentRows[selectedRowIndex];
 
@@ -3016,7 +3310,12 @@ function deleteSelectedPaymentRow() {
       paymentRows.splice(selectedRowIndex, 1);
       selectedRowIndex = null;
       rowBasicsOpen = false;
-      savePaymentRows();
+      try {
+        await savePaymentRowsConfirmed();
+      } catch (error) {
+        showPaymentSaveFailure(error);
+        return;
+      }
       renderMetrics();
       renderRows();
       renderEditor();
@@ -3031,7 +3330,12 @@ function deleteSelectedPaymentRow() {
   paymentRows.splice(selectedRowIndex, 1);
   selectedRowIndex = null;
   rowBasicsOpen = false;
-  savePaymentRows();
+  try {
+    await savePaymentRowsConfirmed();
+  } catch (error) {
+    showPaymentSaveFailure(error);
+    return;
+  }
   renderMetrics();
   renderRows();
   renderEditor();
@@ -3229,6 +3533,11 @@ function renderAll() {
   renderRows();
   renderEditor();
 }
+
+window.HJPaymentYears = Object.freeze({
+  syncFromCrm: syncPaymentYearsFromCrm,
+  getYears: (venue) => [...getYears(venue)],
+});
 
 function switchSheet(venue, month) {
   activeVenue = venue;

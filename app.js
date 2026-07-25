@@ -101,12 +101,12 @@ const addContractButton = document.querySelector("#addContractButton");
 const addBlankContractButton = document.querySelector("#addBlankContractButton");
 const contractPageLink = document.querySelector("#contractPageLink");
 const editButton = document.querySelector("#editButton");
+const renewButton = document.querySelector("#renewButton");
 const cancelButton = document.querySelector("#cancelButton");
 const yearPicker = document.querySelector("#yearPicker");
 const yearSelect = document.querySelector("#yearSelect");
 const prevYearButton = document.querySelector("#prevYearButton");
 const nextYearButton = document.querySelector("#nextYearButton");
-const createYearButton = document.querySelector("#createYearButton");
 const yearActionState = document.querySelector("#yearActionState");
 const moveFolderButton = document.querySelector("#moveFolderButton");
 const deleteButton = document.querySelector("#deleteButton");
@@ -133,8 +133,8 @@ let contractDraftOpen = false;
 let contractDraftMode = "";
 let yearActionLocked = false;
 let yearActionTimer = null;
-let yearCreateTimer = null;
 let pendingVenue = "";
+let renewalSourceRow = null;
 const currentGregorianYear = String(new Date().getFullYear());
 applyInitialUrlState();
 persistPaymentBridge();
@@ -290,6 +290,16 @@ function normalizeRow(row, venue, fallbackFolder = "active", index = 0) {
     sourceFormat: row?.sourceFormat || "",
     folder: row?.folder || fallbackFolder,
     venue,
+    cycleState: String(row?.cycleState || row?.cycle_state || "").trim() || window.HJCrmCycle?.inferState?.(
+      row,
+      Number(String(row?.uid || "").match(/-(20\d{2})$/)?.[1]) || new Date().getFullYear(),
+    ) || "historical",
+    contractPeriod: Number(row?.contractPeriod || row?.contract_period) || 0,
+    currentContractPeriod: Number(row?.currentContractPeriod || row?.current_contract_period) || Number(row?.contractPeriod || row?.contract_period) || 1,
+    confirmedAt: String(row?.confirmedAt || row?.confirmed_at || "").trim(),
+    isCurrentContract: row?.isCurrentContract !== false,
+    isProjection: row?.isProjection === true,
+    projectionSourceYear: String(row?.projectionSourceYear || "").trim(),
   };
   normalized.contractYears = normalizeContractYears(row?.contractYears) || String(getContractYearDiff(normalized.start, normalized.end) || getYearsFromContractTerm(row?.contractTerm) || "");
   const stagedYears = contractYearsNumber(normalized.stage1Years) + contractYearsNumber(normalized.stage2Years);
@@ -363,11 +373,12 @@ function normalizeCrmData(data) {
     const years = {};
     Object.entries(venueData.years || {}).forEach(([year, rows]) => {
       const normalizedRows = cloneRows(rows, venue);
-      if (normalizedRows.length || year === initialYear) years[year] = normalizedRows;
+      years[year] = normalizedRows;
     });
     if (!Object.keys(years).length) years[initialYear] = [];
     const sortedYears = Object.keys(years).sort((a, b) => Number(a) - Number(b));
-    const active = years[venueData.activeYear] ? venueData.activeYear : sortedYears[0];
+    const todayYear = String(new Date().getFullYear());
+    const active = years[todayYear] ? todayYear : years[venueData.activeYear] ? venueData.activeYear : sortedYears[0];
     venues[venue] = { activeYear: active, years };
   });
 
@@ -380,9 +391,9 @@ function normalizeCrmData(data) {
       const currentRows = cloneRows(venues[venue].years?.[year] || [], venue);
       venues[venue].years[year] = mergeSourceRows(sourceRows, currentRows);
     });
-    if (sourceVenue.activeYear && venues[venue].years[sourceVenue.activeYear]) {
-      venues[venue].activeYear = sourceVenue.activeYear;
-    }
+    const todayYear = String(new Date().getFullYear());
+    if (venues[venue].years[todayYear]) venues[venue].activeYear = todayYear;
+    window.HJCrmCycle?.projectCyclesToYearShells?.(venues[venue], Number(todayYear));
   });
 
   const sourceActiveVenue = sourceData.activeVenue || Object.keys(sourceConfig)[0] || "taichung";
@@ -453,6 +464,32 @@ function resetContractDraft() {
   contractDraftMode = "";
 }
 
+function displayFolderForRow(row, year = activeYear) {
+  const state = window.HJCrmCycle?.inferState?.(row, year) || row?.cycleState;
+  if (["legacy_generated", "invalidated"].includes(state)) return "pending";
+  return row?.folder === "ended" ? "ended" : "active";
+}
+
+function canRenewRow(row) {
+  if (!row || displayFolderForRow(row) !== "active" || row.isCurrentContract === false) return false;
+  const confirmed = window.HJCrmCycle?.isConfirmed?.(row, activeYear) ?? ["historical", "confirmed"].includes(row.cycleState);
+  if (!confirmed) return false;
+  const endYear = parseRocDate(row.end)?.rocYear + 1911;
+  if (!endYear || Number(activeYear) !== endYear) return false;
+  return window.HJCrmCycle?.hasStarted?.(row, new Date()) ?? true;
+}
+
+function getCanonicalRenewalSource(row) {
+  if (!row) return null;
+  if (row.isProjection !== true) return row;
+  const wantedKey = window.HJCrmCycle?.cycleKey?.(row);
+  return Object.values(getVenueData(activeVenue).years || {}).flat().find((candidate) =>
+    candidate.isProjection !== true
+    && candidate.isCurrentContract !== false
+    && window.HJCrmCycle?.cycleKey?.(candidate) === wantedKey
+  ) || null;
+}
+
 function applyInitialUrlState() {
   const params = new URLSearchParams(window.location.search);
   const requestedVenue = params.get("venue");
@@ -484,7 +521,9 @@ function applyInitialUrlState() {
   activeFolder = "active";
 
   if (requestedId) {
-    const match = crmRows.find((row) => normalizeCustomerIdForLookup(row.id) === normalizeCustomerIdForLookup(requestedId));
+    const matches = crmRows.filter((row) => normalizeCustomerIdForLookup(row.id) === normalizeCustomerIdForLookup(requestedId));
+    const currentMatches = matches.filter((row) => row.isCurrentContract !== false);
+    const match = currentMatches.length === 1 ? currentMatches[0] : matches[0];
     if (match) selectedKey = getRowKey(match);
   }
 
@@ -530,6 +569,11 @@ function createBlankRow() {
     notes: "",
     folder: "active",
     venue: activeVenue,
+    cycleState: "draft",
+    contractPeriod: 1,
+    currentContractPeriod: 0,
+    confirmedAt: "",
+    isCurrentContract: false,
   };
 }
 
@@ -558,7 +602,13 @@ function persistCrmData() {
   crmData.activeVenue = activeVenue;
   crmData.venues[activeVenue].activeYear = activeYear;
   crmData.venues[activeVenue].years[activeYear] = cloneRows(crmRows, activeVenue);
-  localStorage.setItem(crmStorageKey, JSON.stringify(crmData));
+  const storedData = structuredClone(crmData);
+  Object.values(storedData.venues || {}).forEach((venueData) => {
+    Object.keys(venueData.years || {}).forEach((year) => {
+      venueData.years[year] = (venueData.years[year] || []).filter((row) => row.isProjection !== true);
+    });
+  });
+  localStorage.setItem(crmStorageKey, JSON.stringify(storedData));
   persistPaymentBridge();
 }
 
@@ -568,7 +618,8 @@ function buildPaymentBridgeData() {
     const years = {};
     Object.entries(venueData.years || {}).forEach(([year, rows]) => {
       years[year] = cloneRows(rows, venue)
-        .filter((row) => (row.folder || "active") === "active")
+        .filter((row) => row.isProjection !== true)
+        .filter((row) => window.HJCrmCycle?.isPaymentEligible?.(row, year) ?? (row.folder || "active") === "active")
         .map((row) => ({
           id: row.id,
           name: row.name,
@@ -589,6 +640,8 @@ function buildPaymentBridgeData() {
           stage2Amount: row.stage2Amount,
           stage2Kind: row.stage2Kind,
           pricingStages: row.pricingStages,
+          cycleState: row.cycleState,
+          contractPeriod: row.contractPeriod,
           coNumber: row.coNumber,
           idNumber: row.idNumber,
         }));
@@ -615,10 +668,6 @@ function getYears(venue = activeVenue) {
   return Object.keys(getVenueData(venue).years).sort((a, b) => Number(a) - Number(b));
 }
 
-function crmYearExistsForAllVenues(year) {
-  return Object.keys(crmData.venues || {}).every((venue) => Boolean(getVenueData(venue).years[year]));
-}
-
 function getAdjacentYears() {
   const years = getYears();
   const activeIndex = years.indexOf(activeYear);
@@ -626,14 +675,6 @@ function getAdjacentYears() {
     previous: activeIndex > 0 ? years[activeIndex - 1] : "",
     next: activeIndex >= 0 && activeIndex < years.length - 1 ? years[activeIndex + 1] : "",
   };
-}
-
-function getNextCreatableYear() {
-  let candidate = Number(activeYear) + 1;
-  while (crmYearExistsForAllVenues(String(candidate))) {
-    candidate += 1;
-  }
-  return String(candidate);
 }
 
 function parseRocDate(value) {
@@ -691,12 +732,6 @@ function normalizeSlashRocDate(value) {
   return parsed ? formatRocDate(parsed) : String(value || "").trim();
 }
 
-function shiftRocDate(value, yearDelta) {
-  const parsed = parseRocDate(value);
-  if (!parsed) return value;
-  return formatRocDate({ ...parsed, rocYear: parsed.rocYear + yearDelta });
-}
-
 function rocDateToUtc(value) {
   const parsed = parseRocDate(value);
   if (!parsed) return null;
@@ -739,22 +774,10 @@ function sameRocDate(left, right) {
   return Boolean(leftDate && rightDate && leftDate.getTime() === rightDate.getTime());
 }
 
-function rocToGregorianYear(value) {
+function rocToIsoDate(value) {
   const parsed = parseRocDate(value);
-  return parsed ? parsed.rocYear + 1911 : null;
-}
-
-function getContractYears(row) {
-  const explicitYears = contractYearsNumber(row.contractYears);
-  if (explicitYears) return explicitYears;
-  const inferredYears = getContractYearDiff(row.start, row.end);
-  if (inferredYears) return inferredYears;
-  const text = `${row.contractTerm || ""} ${row.cycle || ""}`.toLowerCase();
-  if (text.includes("三") || text.includes("3y") || text.includes("3年")) return 3;
-  if (text.includes("兩") || text.includes("二") || text.includes("2y") || text.includes("2年")) return 2;
-  const termYears = getYearsFromContractTerm(row.contractTerm);
-  if (termYears) return termYears;
-  return 1;
+  if (!parsed) return "";
+  return `${parsed.rocYear + 1911}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
 }
 
 function normalizeContractYears(value) {
@@ -769,6 +792,18 @@ function contractYearsNumber(value) {
   const normalized = normalizeContractYears(value);
   const number = Number(normalized);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function annualCycleForContractYears(cycleValue, yearsValue) {
+  const currentCycle = normalizeCycleValue(cycleValue);
+  if (!["Y", "2Y", "3Y"].includes(currentCycle)) return currentCycle;
+  const years = contractYearsNumber(yearsValue);
+  return ({ 1: "Y", 2: "2Y", 3: "3Y" })[years] || currentCycle;
+}
+
+function syncAnnualCycleWithContractYears() {
+  if (!draftRow) return;
+  draftRow.cycle = annualCycleForContractYears(draftRow.cycle, draftRow.contractYears);
 }
 
 function getYearsFromContractTerm(term) {
@@ -813,10 +848,9 @@ function getDisplayContractTerm(row) {
 }
 
 function calculateEndDateFromStartAndYears(start, yearsValue) {
-  const parsed = parseRocDate(start);
   const years = contractYearsNumber(yearsValue);
-  if (!parsed || !Number.isInteger(years)) return "";
-  return formatRocDate({ ...parsed, rocYear: parsed.rocYear + years });
+  if (!Number.isInteger(years)) return "";
+  return addRocYears(start, years);
 }
 
 function getComparableRocDate(value) {
@@ -909,6 +943,7 @@ function syncSecondStageFields(changedName) {
   draftRow.start = draftRow.stage1Start;
   draftRow.end = draftRow.stage2End;
   if (stage1Years && stage2Years) draftRow.contractYears = String(stage1Years + stage2Years);
+  syncAnnualCycleWithContractYears();
   draftRow.contractTerm = getDisplayContractTerm(draftRow);
   refreshPricingStages(draftRow);
 }
@@ -931,12 +966,13 @@ function syncContractFields(changedName) {
     if (inferredYears) draftRow.contractYears = String(inferredYears);
   }
   if (["start", "end", "contractYears"].includes(changedName)) {
+    syncAnnualCycleWithContractYears();
     draftRow.contractTerm = getDisplayContractTerm(draftRow);
   }
 }
 
 function syncVisibleContractControls() {
-  ["contractYears", "contractTerm", "start", "end", "stage1Years", "stage1Start", "stage1End", "stage2Years", "stage2Start", "stage2End"].forEach((name) => {
+  ["cycle", "contractYears", "contractTerm", "start", "end", "stage1Years", "stage1Start", "stage1End", "stage2Years", "stage2Start", "stage2End"].forEach((name) => {
     const control = profileForm.querySelector(`[name="${name}"]`);
     if (!control) return;
     control.value = name === "contractTerm" ? getDisplayContractTerm(draftRow || {}) : draftRow?.[name] || "";
@@ -950,33 +986,6 @@ function setDraftStatus() {
   } else {
     markDirty();
   }
-}
-
-function buildNextYearRow(row, targetYear, venue = activeVenue) {
-  const years = getContractYears(row);
-  const endYear = rocToGregorianYear(row.end);
-  const copied = { ...row, uid: `${row.uid || getRowKey(row)}-${targetYear}`, venue };
-  if (!endYear || Number(targetYear) < endYear) return copied;
-  const nextCycle = {
-    ...copied,
-    start: shiftRocDate(row.start, years),
-    end: shiftRocDate(row.end, years),
-  };
-  if (isSecondStageActive(row)) {
-    nextCycle.amount = row.stage2Amount || row.amount;
-    nextCycle.pricePlan = "";
-    nextCycle.hasSecondStage = false;
-    nextCycle.stage1Years = "";
-    nextCycle.stage1Start = "";
-    nextCycle.stage1End = "";
-    nextCycle.stage2Years = "";
-    nextCycle.stage2Start = "";
-    nextCycle.stage2End = "";
-    nextCycle.stage2Amount = "";
-    nextCycle.stage2Kind = "";
-    nextCycle.pricingStages = [];
-  }
-  return nextCycle;
 }
 
 function setSaveState(text, tone = "") {
@@ -1006,7 +1015,7 @@ function setYearActionState(text, tone = "", options = {}) {
 
 function setYearControlsLocked(locked) {
   yearActionLocked = locked;
-  [prevYearButton, nextYearButton, createYearButton].forEach((button) => {
+  [prevYearButton, nextYearButton].forEach((button) => {
     button.disabled = locked;
     button.dataset.busy = locked ? "true" : "";
   });
@@ -1060,6 +1069,7 @@ function renderActionButtons() {
   addContractButton.textContent = contractDraftMode === "existing" ? "收合合約連結" : "連結既有合約";
   addBlankContractButton.textContent = contractDraftMode === "blank" ? "收合空白合約" : "新增空白合約";
   editButton.hidden = editing || contractPage;
+  renewButton.hidden = editing || contractPage;
   moveFolderButton.hidden = editing || contractPage;
   deleteButton.hidden = editing || contractPage;
   cancelButton.hidden = !editing;
@@ -1068,9 +1078,17 @@ function renderActionButtons() {
   newButton.disabled = editing;
   addContractButton.disabled = editing || !draftRow;
   addBlankContractButton.disabled = editing;
-  editButton.disabled = editing || !draftRow;
-  moveFolderButton.disabled = editing || !draftRow;
-  deleteButton.disabled = editing || !draftRow;
+  const pendingRow = draftRow && displayFolderForRow(draftRow) === "pending";
+  editButton.disabled = editing || !draftRow || pendingRow || draftRow.isProjection === true;
+  renewButton.disabled = editing || !canRenewRow(draftRow);
+  const renewalEndYear = parseRocDate(draftRow?.end)?.rocYear + 1911;
+  renewButton.title = renewButton.disabled && renewalEndYear && Number(activeYear) !== renewalEndYear
+    ? `請到 ${renewalEndYear} 年建立續約`
+    : renewButton.disabled && draftRow && draftRow.isCurrentContract !== false
+      ? "這一期尚未開始，不能再建立下一期"
+      : "從目前 CRM 建立下一期";
+  moveFolderButton.disabled = editing || !draftRow || pendingRow || draftRow.isProjection === true || draftRow.isCurrentContract === false;
+  deleteButton.disabled = editing || !draftRow || pendingRow || draftRow.isProjection === true;
   cancelButton.disabled = !editing;
   saveButton.disabled = !editing || !draftRow;
 
@@ -1079,7 +1097,6 @@ function renderActionButtons() {
   const { previous, next } = getAdjacentYears();
   prevYearButton.disabled = editing || yearActionLocked || !previous;
   nextYearButton.disabled = editing || yearActionLocked || !next;
-  createYearButton.disabled = editing || yearActionLocked;
   folderButtons.forEach((button) => {
     button.disabled = editing;
   });
@@ -1100,9 +1117,8 @@ function renderYearSelect() {
   prevYearButton.title = previous ? `切到 ${previous}` : "沒有上一個年度";
   prevYearButton.setAttribute("aria-label", prevYearButton.title);
   nextYearButton.textContent = "下一年 →";
-  nextYearButton.title = next ? `切到 ${next}` : "沒有下一個年度，請用建立年度";
+  nextYearButton.title = next ? `切到 ${next}` : "沒有已成立資料涵蓋下一年度";
   nextYearButton.setAttribute("aria-label", nextYearButton.title);
-  createYearButton.textContent = `建立 ${getNextCreatableYear()}`;
 }
 
 function renderFolderTabs() {
@@ -1122,7 +1138,7 @@ function renderList(rows) {
   recordList.innerHTML = "";
   recordCount.textContent = `${rows.length} 筆`;
   if (!rows.length) {
-    recordList.innerHTML = `<div class="empty-list">${activeFolder === "ended" ? "結束夾目前是空的" : "總表目前沒有客戶"}</div>`;
+    recordList.innerHTML = `<div class="empty-list">${activeFolder === "ended" ? "結束夾目前是空的" : activeFolder === "pending" ? "目前沒有待確認舊資料" : "總表目前沒有客戶"}</div>`;
     return;
   }
   rows.forEach((row) => {
@@ -1656,10 +1672,14 @@ function renderDetail(row) {
   renderActionButtons();
   if (editMode === "create") {
     setSaveState(`${activeYear} 新增中`, "dirty");
+  } else if (editMode === "renewal") {
+    setSaveState("下一期 CRM：請重新確認日期、服務、繳費方式與金額", "dirty");
   } else if (editMode === "edit") {
     setSaveState(`${activeYear} 修改中`, "dirty");
   } else if (contractPage) {
     setSaveState(`${activeYear} 合約底版`);
+  } else if (row.isProjection === true) {
+    setSaveState(`CRM 日期已涵蓋 ${activeYear}，僅供查看`);
   } else {
     setSaveState(`${activeYear} 唯讀，按修改才可編輯`);
   }
@@ -1668,7 +1688,7 @@ function renderDetail(row) {
 function renderEmptyDetail() {
   editMode = "view";
   draftRow = null;
-  detailCompany.textContent = activeFolder === "ended" ? "結束夾目前沒有客戶" : "總表目前沒有客戶";
+  detailCompany.textContent = activeFolder === "ended" ? "結束夾目前沒有客戶" : activeFolder === "pending" ? "目前沒有待確認舊資料" : "總表目前沒有客戶";
   metrics.innerHTML = "";
   profileForm.innerHTML = "";
   contractFrame.innerHTML = "";
@@ -1683,12 +1703,30 @@ function renderEmptyDetail() {
 function getFilteredRows() {
   const query = String(searchInput.value || "").normalize("NFKC").trim().toLowerCase();
   const service = normalizeServiceFilter(activeService);
-  const folderRows = crmRows.filter((row) => (row.folder || "active") === activeFolder);
+  const folderRows = collapseSupersededRows(crmRows.filter((row) => displayFolderForRow(row) === activeFolder));
   const serviceRows = service === "all" ? folderRows : folderRows.filter((row) => serviceType(row) === service);
   if (!query) return serviceRows;
   return serviceRows.filter((row) =>
     [normalizeCustomerIdForLookup(row.id), row.name, row.company, row.category, row.item, row.cycle].some((value) => String(value).normalize("NFKC").toLowerCase().includes(query))
   );
+}
+
+function collapseSupersededRows(rows) {
+  const byCustomer = new Map();
+  rows.forEach((row) => {
+    const customerNo = normalizeCustomerIdForLookup(row.id);
+    if (!customerNo) return;
+    byCustomer.set(customerNo, [...(byCustomer.get(customerNo) || []), row]);
+  });
+  const preferred = new Map();
+  byCustomer.forEach((customerRows, customerNo) => {
+    const currentRows = customerRows.filter((row) => row.isCurrentContract !== false);
+    if (currentRows.length === 1) preferred.set(customerNo, currentRows[0]);
+  });
+  return rows.filter((row) => {
+    const customerNo = normalizeCustomerIdForLookup(row.id);
+    return !preferred.has(customerNo) || preferred.get(customerNo) === row;
+  });
 }
 
 function validateCreatedId(nextId) {
@@ -1723,7 +1761,14 @@ async function saveDraft() {
   const nextId = normalizeCustomerIdForLookup(draftRow.id);
   draftRow.id = nextId;
   const currentIndex = crmRows.findIndex((row) => getRowKey(row) === selectedKey);
-  const duplicated = nextId && crmRows.some((row, index) => normalizeCustomerIdForLookup(row.id) === nextId && (editMode === "create" || index !== currentIndex));
+  const currentId = currentIndex >= 0 ? normalizeCustomerIdForLookup(crmRows[currentIndex].id) : "";
+  const duplicated = nextId && (
+    editMode === "create"
+      ? crmRows.some((row) => normalizeCustomerIdForLookup(row.id) === nextId)
+      : editMode === "edit" && nextId !== currentId
+        ? crmRows.some((row) => normalizeCustomerIdForLookup(row.id) === nextId)
+        : false
+  );
 
   if (!nextId) {
     setSaveState("編號不可空白", "error");
@@ -1754,18 +1799,92 @@ async function saveDraft() {
     return;
   }
 
-  const nextRow = normalizeRow({ ...draftRow, id: nextId, contractTerm: getDisplayContractTerm(draftRow), folder: activeFolder, venue: activeVenue }, activeVenue, activeFolder);
+  if (editMode === "renewal") {
+    const missing = [
+      [draftRow.item, "服務項目"],
+      [draftRow.cycle, "繳費方式"],
+      [draftRow.start, "合約起始日期"],
+      [draftRow.end, "合約到期日"],
+      [draftRow.amount, "金額"],
+    ].filter(([value]) => !String(value || "").trim()).map(([, label]) => label);
+    if (missing.length) {
+      setSaveState(`續約尚缺：${missing.join("、")}`, "error");
+      return;
+    }
+    const previousEnd = rocDateToUtc(renewalSourceRow?.end);
+    const nextStart = rocDateToUtc(draftRow.start);
+    if (previousEnd && nextStart && nextStart.getTime() < previousEnd.getTime()) {
+      setSaveState("下一期 CRM 起始日不能早於目前到期日", "error");
+      return;
+    }
+  }
+
+  const targetYear = editMode === "renewal" ? String(window.HJCrmCycle?.contractStartYear?.(draftRow) || "") : activeYear;
+  if (editMode === "renewal" && !targetYear) {
+    setSaveState("續約起始日期無法判讀", "error");
+    return;
+  }
+  const nextPeriod = editMode === "renewal" ? (Number(renewalSourceRow?.currentContractPeriod || renewalSourceRow?.contractPeriod) || 1) + 1 : Number(draftRow.contractPeriod) || 1;
+  const nextRow = normalizeRow({
+    ...draftRow,
+    id: nextId,
+    contractTerm: getDisplayContractTerm(draftRow),
+    folder: "active",
+    venue: activeVenue,
+    cycleState: editMode === "renewal" || editMode === "create" ? "confirmed" : draftRow.cycleState,
+    contractPeriod: nextPeriod,
+    confirmedAt: editMode === "renewal" || editMode === "create" ? new Date().toISOString() : draftRow.confirmedAt,
+    isCurrentContract: editMode === "edit" ? draftRow.isCurrentContract !== false : true,
+    uid: editMode === "renewal" ? `${activeVenue}-${targetYear}-renewal-${nextId}-p${nextPeriod}` : draftRow.uid,
+  }, activeVenue, "active");
+
+  if (editMode === "renewal") {
+    const exists = Object.values(getVenueData(activeVenue).years || {}).flat().some((row) =>
+      normalizeCustomerIdForLookup(row.id) === nextId
+      && Number(row.contractPeriod) === nextPeriod
+      && window.HJCrmCycle?.sameContract?.(row, nextRow)
+      && ["historical", "confirmed"].includes(row.cycleState)
+    );
+    if (exists) {
+      setSaveState("這一期 CRM 已存在，不會重複新增", "error");
+      return;
+    }
+    const summary = `${nextId} ${nextRow.company || nextRow.name}\n${nextRow.item}｜${nextRow.cycle}\n${nextRow.start} → ${nextRow.end}\n${nextRow.amount}`;
+    if (!window.confirm(`確認建立下一期 CRM？\n\n${summary}\n\n目前 CRM 資料不會被修改。`)) return;
+  }
   setSaveState("正在儲存正式資料...", "saved");
   try {
     if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
-    await window.HJ_DB.saveCrmRow(nextRow, { year: activeYear });
+    const saved = await window.HJ_DB.saveCrmRow(nextRow, {
+      year: targetYear,
+      intent: editMode === "renewal" ? "renewal" : editMode === "create" ? "new" : "edit",
+      expectedContractPeriod: Number(renewalSourceRow?.currentContractPeriod || renewalSourceRow?.contractPeriod) || undefined,
+      expectedStart: renewalSourceRow ? rocToIsoDate(renewalSourceRow.start) : undefined,
+      expectedEnd: renewalSourceRow ? rocToIsoDate(renewalSourceRow.end) : undefined,
+    });
+    if (saved?.row) Object.assign(nextRow, saved.row);
   } catch (error) {
     console.error(error);
     setSaveState(`正式資料未儲存：${error.message || error}`, "error");
     return;
   }
 
-  if (editMode === "create") {
+  if (editMode === "renewal") {
+    Object.values(getVenueData(activeVenue).years || {}).forEach((yearRows) => {
+      (yearRows || []).forEach((row) => {
+        if (normalizeCustomerIdForLookup(row.id) !== nextId) return;
+        row.isCurrentContract = false;
+        row.currentContractPeriod = nextPeriod;
+        if (row.cycleState === "legacy_generated") row.cycleState = "invalidated";
+      });
+    });
+    const targetRows = getVenueData(activeVenue).years[targetYear] ||= [];
+    targetRows.push(nextRow);
+    Object.values(crmData.venues || {}).forEach((venueData) => window.HJCrmCycle?.projectCyclesToYearShells?.(venueData));
+    activeYear = targetYear;
+    getVenueData(activeVenue).activeYear = targetYear;
+    crmRows = getVenueData(activeVenue).years[targetYear] || [];
+  } else if (editMode === "create") {
     nextRow.uid = draftRow.uid || `${activeVenue}-${activeYear}-created-${Date.now()}`;
     crmRows.push(nextRow);
   } else {
@@ -1774,10 +1893,11 @@ async function saveDraft() {
   }
   selectedKey = getRowKey(nextRow);
   editMode = "view";
+  renewalSourceRow = null;
   persistCrmData();
   render();
   runPaymentAudit("crm-save");
-  setSaveState(`${activeYear} 已儲存正式資料`, "saved");
+  setSaveState(`${activeYear} 已儲存${nextRow.contractPeriod > 1 ? "下一期 CRM" : "正式資料"}；原年度資料未修改`, "saved");
 }
 
 function getRecordTitle(row) {
@@ -1800,7 +1920,7 @@ async function moveCurrentFolder() {
   setSaveState("正在儲存正式資料...", "saved");
   try {
     if (!window.HJ_DB?.saveCrmRow) throw new Error("正式資料同步尚未載入");
-    await window.HJ_DB.saveCrmRow(nextRow, { year: activeYear });
+    await window.HJ_DB.saveCrmRow(nextRow, { year: activeYear, intent: "folder" });
   } catch (error) {
     console.error(error);
     setSaveState(`正式資料未儲存：${error.message || error}`, "error");
@@ -1903,49 +2023,6 @@ function switchYear(year, announce = false) {
   }
 }
 
-function createNextYear() {
-  if (isEditing() || yearActionLocked) return;
-  const nextYear = getNextCreatableYear();
-
-  const confirmed = window.confirm(`確定建立兩館 ${nextYear} CRM 年度？\n台中館與環瑞館會各自用自己的上一個年度資料建立，並一起切到 ${nextYear}。`);
-  if (!confirmed) return;
-
-  setYearControlsLocked(true);
-  setYearActionState(`${nextYear} 準備中`, "saved", { persist: true });
-  setSaveState(`${nextYear} 準備中`, "saved");
-  if (yearCreateTimer) window.clearTimeout(yearCreateTimer);
-  yearCreateTimer = window.setTimeout(() => {
-    Object.keys(crmData.venues || {}).forEach((venue) => {
-      const venueData = getVenueData(venue);
-      const sourceYear = getYears(venue)
-        .filter((year) => Number(year) < Number(nextYear))
-        .at(-1) || initialYear;
-      if (!venueData.years[nextYear]) {
-        venueData.years[nextYear] = (venueData.years[sourceYear] || []).map((row) => buildNextYearRow(row, nextYear, venue));
-      }
-      venueData.activeYear = nextYear;
-    });
-    activeYear = nextYear;
-    crmRows = getVenueRows(activeVenue, activeYear);
-    activeFolder = "active";
-    resetContractDraft();
-    selectedKey = getRowKey(crmRows.find((row) => (row.folder || "active") === activeFolder) || crmRows[0]);
-    searchInput.value = "";
-    persistCrmData();
-    render();
-    Object.keys(crmData.venues || {}).forEach((venue) => {
-      runPaymentAudit("crm-year-create", {
-        venue,
-        year: activeYear,
-        crmRowsOverride: getVenueRows(venue, activeYear),
-      });
-    });
-    setYearControlsLocked(false);
-    setYearActionState(`已轉入 ${activeYear}`, "saved");
-    setSaveState(`${activeYear} 兩館已轉入`, "saved");
-  }, 60);
-}
-
 function goToPreviousYear() {
   const { previous } = getAdjacentYears();
   if (previous) switchYear(previous, true);
@@ -1963,10 +2040,10 @@ function render() {
   renderFolderTabs();
   renderServiceTabs();
   const rows = getFilteredRows();
-  if (editMode === "create") {
+  if (["create", "renewal"].includes(editMode)) {
     renderList(rows);
     renderOverview();
-    renderDetail(draftRow || createBlankRow());
+    renderDetail(draftRow || (editMode === "create" ? createBlankRow() : renewalSourceRow));
     return;
   }
   const selected = rows.find((row) => getRowKey(row) === selectedKey) || rows[0];
@@ -1987,18 +2064,35 @@ function beginCreate() {
   selectedKey = "";
   searchInput.value = "";
   editMode = "create";
+  renewalSourceRow = null;
   draftRow = createBlankRow();
   render();
 }
 
 function beginEdit() {
-  if (!draftRow) return;
+  if (!draftRow || displayFolderForRow(draftRow) === "pending" || draftRow.isProjection === true) return;
   editMode = "edit";
+  renewalSourceRow = null;
+  render();
+}
+
+function beginRenewal() {
+  if (!canRenewRow(draftRow)) return;
+  const sourceRow = getCanonicalRenewalSource(draftRow);
+  if (!sourceRow) {
+    setSaveState("找不到這筆年度顯示所對應的目前 CRM，已停止續約", "error");
+    return;
+  }
+  renewalSourceRow = structuredClone(sourceRow);
+  draftRow = window.HJCrmCycle?.renewalDraftFrom?.(sourceRow) || { ...sourceRow, start: "", end: "", amount: "", cycleState: "draft" };
+  editMode = "renewal";
+  activePage = "profile";
   render();
 }
 
 function cancelEdit() {
   editMode = "view";
+  renewalSourceRow = null;
   draftRow = null;
   render();
 }
@@ -2031,6 +2125,7 @@ newButton.addEventListener("click", beginCreate);
 addContractButton.addEventListener("click", toggleContractDraft);
 addBlankContractButton.addEventListener("click", toggleBlankContractDraft);
 editButton.addEventListener("click", beginEdit);
+renewButton.addEventListener("click", beginRenewal);
 cancelButton.addEventListener("click", cancelEdit);
 searchInput.addEventListener("input", () => {
   if (!isEditing()) render();
@@ -2038,7 +2133,6 @@ searchInput.addEventListener("input", () => {
 yearSelect.addEventListener("change", () => switchYear(yearSelect.value, true));
 prevYearButton.addEventListener("click", goToPreviousYear);
 nextYearButton.addEventListener("click", goToNextYear);
-createYearButton.addEventListener("click", createNextYear);
 folderButtons.forEach((button) => {
   button.addEventListener("click", () => {
     if (isEditing()) return;

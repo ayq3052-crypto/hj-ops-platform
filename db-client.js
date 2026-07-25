@@ -7,11 +7,17 @@
   let branchesPromise = null;
   const crmStorageKey = "hj-crm-clean-v5-data-repair";
   const crmYearSyncMarkerKey = "hj-crm-year-supabase-v1";
+  const savedPageStateKeys = new Set([
+    "hj-contract-drafts-v2",
+    "hjDraftNoticeLogV1",
+  ]);
 
   const venueLabels = {
     taichung: "台中館",
     huanrui: "環瑞館",
   };
+  const currentGregorianYear = String(new Date().getFullYear());
+  const crmCycle = () => window.HJCrmCycle;
 
   const monthLabels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
@@ -23,6 +29,28 @@
   };
 
   const textOrEmpty = (value) => String(value ?? "").trim();
+  const comparableValue = (value) => {
+    if (value === undefined) return null;
+    if (Array.isArray(value)) return value.map(comparableValue);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.keys(value)
+          .sort()
+          .map((key) => [key, comparableValue(value[key])]),
+      );
+    }
+    if (typeof value === "number") return Number.isFinite(value) ? value : null;
+    return value;
+  };
+  const valuesMatch = (left, right) => (
+    JSON.stringify(comparableValue(left)) === JSON.stringify(comparableValue(right))
+  );
+  const assertFieldsMatch = (actual, expected, fields, label) => {
+    const mismatches = fields.filter((field) => !valuesMatch(actual?.[field], expected?.[field]));
+    if (mismatches.length) {
+      throw new Error(`${label} 寫入後核對失敗：${mismatches.join("、")}`);
+    }
+  };
   const normalizeCustomerNo = (value) => {
     if (window.HJCustomerId?.normalize) return window.HJCustomerId.normalize(value);
     const raw = String(value ?? "").normalize("NFKC").trim();
@@ -52,10 +80,14 @@
     }
     return snapshot;
   };
-  const historicalPaymentSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => ({
-    ...(row && typeof row === "object" ? row : {}),
-    id: customerNo,
-  });
+  const historicalPaymentSnapshot = (row, customerNo = normalizeCustomerNo(row?.id || row?.customer_no)) => {
+    const snapshot = { ...(row && typeof row === "object" ? row : {}) };
+    delete snapshot._dbDirtyFields;
+    return {
+      ...snapshot,
+      id: customerNo,
+    };
+  };
 
   const isoToRoc = (value) => {
     if (!value) return "";
@@ -294,6 +326,11 @@
       depositPolicy: textOrEmpty(contract?.deposit_policy),
       officeContractMode: storedOfficeMode === "renewal" ? "renewal" : contractModeFromPolicy(contract?.deposit_policy),
       contractStatus: textOrEmpty(contract?.contract_status),
+      cycleState: "historical",
+      contractPeriod: Number(contract?.contract_period) || 1,
+      currentContractPeriod: Number(contract?.contract_period) || 1,
+      confirmedAt: "",
+      isCurrentContract: true,
       stampVersion: textOrEmpty(contract?.stamp_version),
     };
   };
@@ -326,14 +363,28 @@
         .filter((row) => row.branch_code === venue)
         .sort((a, b) => String(a.customer_no).localeCompare(String(b.customer_no), "zh-Hant", { numeric: true }))
         .map((row, index) => customerToCrmRow(row, index, contractByCustomer.get(row.id)));
-      venues[venue] = { activeYear: "2026", years: { 2026: rows } };
+      venues[venue] = { activeYear: currentGregorianYear, years: { [currentGregorianYear]: rows } };
     });
     return crmSourceWithVenues(venues);
   };
 
-  const buildCrmSourceFromYearRows = (yearRows, branches) => {
+  const preferredActiveYear = (years) => {
+    if (years[currentGregorianYear]) return currentGregorianYear;
+    const available = Object.keys(years).sort((a, b) => Number(a) - Number(b));
+    return available.filter((year) => Number(year) <= Number(currentGregorianYear)).at(-1) || available[0] || currentGregorianYear;
+  };
+
+  const buildCrmSourceFromYearRows = (yearRows, branches, customers = [], contracts = []) => {
     if (!Array.isArray(yearRows) || !yearRows.length) return null;
     const venues = Object.fromEntries(Object.keys(venueLabels).map((venue) => [venue, { activeYear: "", years: {} }]));
+    const currentCustomerById = new Map((customers || []).map((customer) => [customer.id, customer]));
+    const currentContractByCustomer = new Map((contracts || []).map((contract) => [contract.customer_id, contract]));
+    const currentPeriodByCustomer = new Map();
+    yearRows.forEach((stored) => {
+      const state = textOrEmpty(stored.cycle_state) || crmCycle()?.inferState?.(stored.row_data || {}, stored.year);
+      if (!["historical", "confirmed"].includes(state) || !stored.customer_id) return;
+      currentPeriodByCustomer.set(stored.customer_id, Math.max(currentPeriodByCustomer.get(stored.customer_id) || 1, Number(stored.contract_period) || 1));
+    });
     yearRows
       .slice()
       .sort((left, right) => Number(left.year) - Number(right.year) || String(left.customer_no).localeCompare(String(right.customer_no), "zh-Hant", { numeric: true }))
@@ -342,6 +393,16 @@
         if (!venues[venue]) return;
         const year = String(stored.year);
         const snapshot = canonicalCustomerSnapshot(stored.row_data && typeof stored.row_data === "object" ? stored.row_data : {}, stored.customer_no);
+        const currentCustomer = currentCustomerById.get(stored.customer_id);
+        const cycleState = textOrEmpty(stored.cycle_state) || crmCycle()?.inferState?.(snapshot, year) || (Number(year) <= Number(currentGregorianYear) ? "historical" : "legacy_generated");
+        const contractPeriod = Number(stored.contract_period) || 0;
+        const snapshotStart = rocToIso(snapshot.start);
+        const snapshotEnd = rocToIso(snapshot.end);
+        const isCurrentContract = ["historical", "confirmed"].includes(cycleState)
+          && Boolean(currentCustomer)
+          && snapshotStart === textOrEmpty(currentCustomer.contract_start)
+          && snapshotEnd === textOrEmpty(currentCustomer.contract_end)
+          && textOrEmpty(currentCustomer.crm_status || "active") !== "ended";
         const row = {
           ...snapshot,
           id: normalizeCustomerNo(snapshot.id || stored.customer_no),
@@ -349,13 +410,28 @@
           venue,
           uid: textOrEmpty(snapshot.uid || stored.source_row_key) || `${venue}-${year}-${String(index + 1).padStart(3, "0")}-${stored.customer_no}`,
           sourceFormat: "db-year",
+          cycleState,
+          contractPeriod,
+          currentContractPeriod: currentPeriodByCustomer.get(stored.customer_id) || 1,
+          confirmedAt: textOrEmpty(stored.confirmed_at),
+          isCurrentContract,
         };
         venues[venue].years[year] ||= [];
         venues[venue].years[year].push(row);
       });
-    Object.values(venues).forEach((venueData) => {
+    Object.entries(venues).forEach(([venue, venueData]) => {
+      const currentRows = (customers || [])
+        .filter((customer) => customer.branch_code === venue)
+        .sort((left, right) => String(left.customer_no).localeCompare(String(right.customer_no), "zh-Hant", { numeric: true }))
+        .map((customer, index) => customerToCrmRow(customer, index, currentContractByCustomer.get(customer.id)));
+      const currentYearRows = venueData.years[currentGregorianYear] ||= [];
+      const existingCustomerNos = new Set(currentYearRows.map((row) => normalizeCustomerNo(row.id)));
+      currentRows.forEach((row) => {
+        if (!existingCustomerNos.has(normalizeCustomerNo(row.id))) currentYearRows.push(row);
+      });
+      crmCycle()?.projectCyclesToYearShells?.(venueData, Number(currentGregorianYear));
       const years = Object.keys(venueData.years).sort((a, b) => Number(a) - Number(b));
-      venueData.activeYear = years.at(-1) || "2026";
+      venueData.activeYear = preferredActiveYear(venueData.years);
       venueData.years[venueData.activeYear] ||= [];
     });
     return crmSourceWithVenues(venues);
@@ -378,6 +454,7 @@
       price: textOrEmpty(snapshot.price || moneyText(row.amount_due)),
       paidDate: textOrEmpty(snapshot.paidDate || row.payment_date),
       paidAmount: textOrEmpty(snapshot.paidAmount || moneyText(row.amount_paid)),
+      nextDate: textOrEmpty(snapshot.nextDate || row.next_payment_date),
       manualStatus: textOrEmpty(manualStatus),
       invoice: textOrEmpty(row.invoice_number || snapshot.invoice),
       note: textOrEmpty(row.memo || snapshot.note),
@@ -468,7 +545,7 @@
           queryOptional("crm_year_rows"),
           getBranches(),
         ]);
-        const crmSource = buildCrmSourceFromYearRows(crmYearRows, branches) || buildCrmSource(customers, contracts);
+        const crmSource = buildCrmSourceFromYearRows(crmYearRows, branches, customers, contracts) || buildCrmSource(customers, contracts);
         const paymentGlobals = buildPaymentGlobals(paymentRows);
         const settingsByKey = Object.fromEntries((settings || []).map((row) => [row.key, row.value]));
         return {
@@ -567,6 +644,7 @@
       if (!branch) return;
       Object.entries(venueData?.years || {}).forEach(([year, rows]) => {
         (rows || []).forEach((row) => {
+          if (row?.isProjection === true) return;
           const customerNo = normalizeCustomerNo(row.id);
           if (!customerNo) return;
           payloads.push({
@@ -578,6 +656,9 @@
             source_row_key: textOrEmpty(row.uid) || null,
             row_data: canonicalCustomerSnapshot({ ...row, venue }, customerNo),
             source,
+            cycle_state: textOrEmpty(row.cycleState || row.cycle_state) || crmCycle()?.inferState?.(row, year) || "legacy_generated",
+            contract_period: Number(row.contractPeriod || row.contract_period) || 0,
+            confirmed_at: textOrEmpty(row.confirmedAt || row.confirmed_at) || null,
           });
         });
       });
@@ -589,7 +670,7 @@
     const client = await getClient();
     for (let index = 0; index < payloads.length; index += 400) {
       const batch = payloads.slice(index, index + 400);
-      const { error } = await client.from("crm_year_rows").upsert(batch, { onConflict: "branch_id,year,customer_no" });
+      const { error } = await client.from("crm_year_rows").upsert(batch, { onConflict: "branch_id,year,customer_no,contract_period" });
       if (error) throw error;
     }
   };
@@ -614,88 +695,213 @@
       source_row_key: textOrEmpty(row.uid) || null,
       row_data: canonicalCustomerSnapshot({ ...row, venue: row.venue || "taichung" }, customerNo),
       source: "web_crm",
+      cycle_state: textOrEmpty(row.cycleState || row.cycle_state) || crmCycle()?.inferState?.(row, year) || "legacy_generated",
+      contract_period: Number(row.contractPeriod || row.contract_period) || 0,
+      confirmed_at: textOrEmpty(row.confirmedAt || row.confirmed_at) || null,
     };
     await upsertCrmYearPayloads([payload]);
     localStorage.setItem(crmYearSyncMarkerKey, "ready");
   };
 
+  const verifyCrmPersistence = async (row, options, customerPayload, expectedPeriod, verifyCustomer = true) => {
+    const client = await getClient();
+    if (verifyCustomer) {
+      const { data: savedCustomer, error: customerError } = await client
+        .from("customers")
+        .select("*")
+        .eq("branch_id", customerPayload.branch_id)
+        .eq("customer_no", customerPayload.customer_no)
+        .maybeSingle();
+      if (customerError) throw customerError;
+      if (!savedCustomer) throw new Error("CRM 寫入後找不到客戶資料");
+      assertFieldsMatch(savedCustomer, customerPayload, [
+        "branch_id",
+        "customer_no",
+        "customer_name",
+        "company_name",
+        "company_tax_id",
+        "identity_number",
+        "birthday",
+        "phone",
+        "email",
+        "address",
+        "service_type",
+        "payment_cycle",
+        "monthly_amount",
+        "deposit_amount",
+        "contract_start",
+        "contract_end",
+        "payment_day",
+        "crm_status",
+        "source_row_key",
+        "notes",
+      ], "CRM 客戶資料");
+    }
+
+    const year = Number(options.year) || new Date().getFullYear();
+    let yearQuery = client
+      .from("crm_year_rows")
+      .select("id,folder,row_data,contract_period")
+      .eq("branch_id", customerPayload.branch_id)
+      .eq("year", year)
+      .eq("customer_no", customerPayload.customer_no);
+    if (Number.isInteger(Number(expectedPeriod))) {
+      yearQuery = yearQuery.eq("contract_period", Number(expectedPeriod));
+    }
+    const { data: savedYearRow, error: yearRowError } = await yearQuery.maybeSingle();
+    if (yearRowError) throw yearRowError;
+    if (!savedYearRow) throw new Error("CRM 年度資料寫入後找不到");
+    const expectedSnapshot = canonicalCustomerSnapshot(
+      { ...row, venue: row.venue || "taichung" },
+      customerPayload.customer_no,
+    );
+    const snapshotFields = [
+      "id",
+      "name",
+      "company",
+      "category",
+      "item",
+      "start",
+      "end",
+      "cycle",
+      "amount",
+      "stageAmount",
+      "deposit",
+      "payDay",
+      "coNumber",
+      "birthday",
+      "address",
+      "phone",
+      "idNumber",
+      "mail",
+      "folder",
+    ].filter((field) => Object.prototype.hasOwnProperty.call(expectedSnapshot, field));
+    assertFieldsMatch(savedYearRow.row_data || {}, expectedSnapshot, snapshotFields, "CRM 年度資料");
+    const expectedFolder = row.folder === "ended" ? "ended" : "active";
+    if (savedYearRow.folder !== expectedFolder) throw new Error("CRM 年度狀態寫入後核對失敗");
+    return { verified: true, customerNo: customerPayload.customer_no, year };
+  };
+
   const markCrmYearSyncPending = () => localStorage.removeItem(crmYearSyncMarkerKey);
 
   const migrateLegacyCrmYears = async () => {
-    const raw = localStorage.getItem(crmStorageKey);
-    if (!raw || localStorage.getItem(crmYearSyncMarkerKey) === "ready") return { migrated: false, rows: 0 };
-    const parsed = JSON.parse(raw);
-    const result = await syncCrmYearData(parsed, { source: "legacy_browser_migration" });
-    return { migrated: true, rows: result.rows };
-  };
-
-  const contractPayloadFromCrmRow = (row, customerId, branchId) => {
-    const startDate = rocToIso(row.start);
-    const endDate = rocToIso(row.end);
-    if (!customerId || !branchId || !startDate || !endDate) return null;
-    return {
-      customer_id: customerId,
-      branch_id: branchId,
-      contract_no: normalizeCustomerNo(row.id),
-      service_type: serviceTypeFromText(row.item, row.category),
-      contract_status: row.folder === "ended" ? "ended" : "active",
-      start_date: startDate,
-      end_date: endDate,
-      signed_date: rocToIso(row.signedAt),
-      payment_cycle: normalizeCycle(row.cycle),
-      monthly_amount: numericMoney(row.amount),
-      deposit_amount: numericMoney(row.deposit),
-      metadata: {
-        source_system: "web_crm",
-        source_snapshot: canonicalCustomerSnapshot(row),
-        pricing_stages: Array.isArray(row.pricingStages) ? row.pricingStages : [],
-      },
-      notes: textOrEmpty(row.notes) || null,
-    };
+    // 安全邊界：頁面載入時不再把瀏覽器舊快照整批回寫正式 CRM。
+    return { migrated: false, rows: 0 };
   };
 
   const saveCrmRow = async (row, options = {}) => {
     const client = await getClient();
     const branches = await getBranches();
+    const intent = ["new", "edit", "renewal", "folder"].includes(options.intent) ? options.intent : "edit";
     const customerPayload = customerPayloadFromCrmRow(row, branches);
     if (!customerPayload) throw new Error("CRM 資料不足，無法儲存正式資料");
 
-    const { data: savedCustomer, error: customerError } = await client
+    const existingCustomerQuery = await client
       .from("customers")
-      .upsert(customerPayload, { onConflict: "branch_id,customer_no" })
-      .select("id,branch_id")
-      .single();
-    if (customerError) throw customerError;
+      .select("id,branch_id,customer_no,contract_start,contract_end")
+      .eq("branch_id", customerPayload.branch_id)
+      .eq("customer_no", customerPayload.customer_no)
+      .maybeSingle();
+    if (existingCustomerQuery.error) throw existingCustomerQuery.error;
+    if (intent === "new" && existingCustomerQuery.data) throw new Error("此編號已存在，不能當新客戶重複建立");
 
-    const contractPayload = contractPayloadFromCrmRow(row, savedCustomer.id, savedCustomer.branch_id);
-    if (contractPayload) {
-      const { data: existingContracts, error: existingError } = await client
-        .from("contracts")
-        .select("id")
-        .eq("customer_id", savedCustomer.id)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (existingError) throw existingError;
+    const existingCustomer = existingCustomerQuery.data;
 
-      if (existingContracts?.[0]?.id) {
-        const { error: contractError } = await client
-          .from("contracts")
-          .update(contractPayload)
-          .eq("id", existingContracts[0].id);
-        if (contractError) throw contractError;
-      } else {
-        const { error: contractError } = await client.from("contracts").insert({
-          ...contractPayload,
-          contract_period: Number(row.contractPeriod || row.contract_period) || 1,
-        });
-        if (contractError) throw contractError;
-      }
+    const rowState = textOrEmpty(row.cycleState || row.cycle_state) || crmCycle()?.inferState?.(row, options.year);
+    const canMutateCurrent = ["historical", "confirmed"].includes(rowState) && row.isCurrentContract !== false;
+    if (intent === "renewal") {
+      if (!existingCustomer) throw new Error("找不到可續約的目前 CRM");
+      const expectedPeriod = Number(options.expectedContractPeriod);
+      if (!Number.isInteger(expectedPeriod) || expectedPeriod < 1) throw new Error("CRM 期次無法判讀，請重新整理後再續約");
+      if (options.expectedStart && options.expectedStart !== existingCustomer.contract_start) throw new Error("CRM 起始日已變更，請重新整理後再續約");
+      if (options.expectedEnd && options.expectedEnd !== existingCustomer.contract_end) throw new Error("CRM 到期日已變更，請重新整理後再續約");
+    } else if (["edit", "folder"].includes(intent) && !canMutateCurrent) {
+      // 歷史列或舊系統預生列只能保存該年度快照，不可反向覆蓋目前 CRM。
+      await saveCrmYearRow(row, Number(options.year) || new Date().getFullYear(), existingCustomer?.id || null, customerPayload.branch_id);
+      await verifyCrmPersistence(
+        row,
+        options,
+        customerPayload,
+        Number(row.contractPeriod || row.contract_period) || 0,
+        false,
+      );
+      platformDataPromise = null;
+      return existingCustomer || { id: null, branch_id: customerPayload.branch_id };
     }
 
-    await saveCrmYearRow(row, Number(options.year) || new Date().getFullYear(), savedCustomer.id, savedCustomer.branch_id);
+    if (intent === "renewal") {
+      const nextPeriod = Number(options.expectedContractPeriod) + 1;
+      const renewalSavedRow = {
+        ...row,
+        cycleState: "confirmed",
+        contractPeriod: nextPeriod,
+        confirmedAt: new Date().toISOString(),
+        isCurrentContract: true,
+      };
+      const year = Number(options.year) || new Date().getFullYear();
+      const yearRowPayload = {
+        branch_id: existingCustomer.branch_id,
+        year,
+        customer_no: normalizeCustomerNo(renewalSavedRow.id),
+        folder: "active",
+        source_row_key: textOrEmpty(renewalSavedRow.uid) || null,
+        row_data: canonicalCustomerSnapshot({ ...renewalSavedRow, venue: renewalSavedRow.venue || "taichung" }, normalizeCustomerNo(renewalSavedRow.id)),
+        source: "web_crm",
+      };
+      const { error } = await client.rpc("save_confirmed_crm_renewal", {
+        p_customer_id: existingCustomer.id,
+        p_expected_contract_period: Number(options.expectedContractPeriod),
+        p_expected_start: options.expectedStart,
+        p_expected_end: options.expectedEnd,
+        p_customer_payload: customerPayload,
+        p_year_row_payload: yearRowPayload,
+      });
+      if (error) throw error;
+      await verifyCrmPersistence(renewalSavedRow, options, customerPayload, nextPeriod, true);
+      platformDataPromise = null;
+      return { ...existingCustomer, row: renewalSavedRow };
+    }
+
+    let savedCustomer = existingCustomer;
+    if (intent !== "renewal") {
+      const { data, error: customerError } = await client
+        .from("customers")
+        .upsert(customerPayload, { onConflict: "branch_id,customer_no" })
+        .select("id,branch_id")
+        .single();
+      if (customerError) throw customerError;
+      savedCustomer = data;
+    }
+
+    const savedRow = {
+      ...row,
+      cycleState: rowState || "confirmed",
+      contractPeriod: Number(row.contractPeriod || row.contract_period) || 1,
+      confirmedAt: textOrEmpty(row.confirmedAt) || (intent === "new" ? new Date().toISOString() : null),
+      isCurrentContract: true,
+    };
+    await saveCrmYearRow(savedRow, Number(options.year) || new Date().getFullYear(), savedCustomer.id, savedCustomer.branch_id);
+    await verifyCrmPersistence(
+      savedRow,
+      options,
+      customerPayload,
+      Number(savedRow.contractPeriod || savedRow.contract_period) || 1,
+      true,
+    );
+
+    if (intent === "folder" && row.folder === "ended") {
+      const { error: invalidateError } = await client
+        .from("crm_year_rows")
+        .update({ cycle_state: "invalidated" })
+        .eq("branch_id", savedCustomer.branch_id)
+        .eq("customer_no", normalizeCustomerNo(row.id))
+        .eq("cycle_state", "legacy_generated")
+        .gt("year", Number(options.year) || new Date().getFullYear());
+      if (invalidateError) throw invalidateError;
+    }
 
     platformDataPromise = null;
-    return savedCustomer;
+    return { ...savedCustomer, row: savedRow };
   };
 
   const parsePaymentStorageKey = (key) => {
@@ -722,8 +928,10 @@
       company_name: textOrEmpty(row.company) || null,
       service_type: serviceTypeFromText(row.section, row.note),
       payment_cycle: normalizeCycle(row.cycle),
-      amount_due: numericMoney(row.paidAmount) || numericMoney(row.price),
+      amount_due: numericMoney(row.price),
       amount_paid: numericMoney(row.paidAmount),
+      payment_date: textOrEmpty(row.paidDate) || null,
+      next_payment_date: textOrEmpty(row.nextDate) || null,
       invoice_status: /✔|V|已開|開立/.test(String(row.invoice || "")) ? "issued" : "pending",
       invoice_number: textOrEmpty(row.invoice) || null,
       row_status: numericMoney(row.paidAmount) ? "paid" : row.manualStatus === "nonbillable" ? "ignored" : "open",
@@ -789,15 +997,103 @@
       ].join("|");
     };
     const existingIdentities = new Set((existingRows || []).map(identityFor));
+    const allowedDirtyFields = new Set([
+      "section",
+      "name",
+      "company",
+      "cycle",
+      "start",
+      "end",
+      "price",
+      "paidDate",
+      "paidAmount",
+      "nextDate",
+      "invoice",
+      "manualStatus",
+      "note",
+      "previousSection",
+      "previousVenue",
+      "previousYear",
+      "previousMonth",
+      "previousNote",
+    ]);
+    const existingPatchFor = (existing, payload, sourceRow) => {
+      const dirtyFields = Array.from(new Set(
+        (Array.isArray(sourceRow?._dbDirtyFields) ? sourceRow._dbDirtyFields : [])
+          .map(textOrEmpty)
+          .filter((field) => allowedDirtyFields.has(field)),
+      ));
+      if (!dirtyFields.length) return null;
 
+      const patch = {};
+      const snapshot = {
+        ...(existing?.source_snapshot && typeof existing.source_snapshot === "object" ? existing.source_snapshot : {}),
+      };
+      const metadata = {
+        ...(existing?.metadata && typeof existing.metadata === "object" ? existing.metadata : {}),
+      };
+      let metadataChanged = false;
+      dirtyFields.forEach((field) => {
+        snapshot[field] = payload.source_snapshot?.[field] ?? null;
+      });
+      patch.source_snapshot = snapshot;
+
+      if (dirtyFields.includes("section")) {
+        patch.section = payload.section;
+        patch.service_type = payload.service_type;
+      }
+      if (dirtyFields.includes("name")) patch.customer_name = payload.customer_name;
+      if (dirtyFields.includes("company")) patch.company_name = payload.company_name;
+      if (dirtyFields.includes("cycle")) patch.payment_cycle = payload.payment_cycle;
+      if (dirtyFields.includes("price")) {
+        patch.amount_due = payload.amount_due;
+        metadata.price = payload.metadata?.price ?? null;
+        metadataChanged = true;
+      }
+      if (dirtyFields.includes("start")) {
+        metadata.start = payload.metadata?.start ?? null;
+        metadataChanged = true;
+      }
+      if (dirtyFields.includes("end")) {
+        metadata.end = payload.metadata?.end ?? null;
+        metadataChanged = true;
+      }
+      if (dirtyFields.includes("paidDate")) patch.payment_date = payload.payment_date;
+      if (dirtyFields.includes("paidAmount")) {
+        patch.amount_paid = payload.amount_paid;
+        patch.row_status = payload.row_status;
+      }
+      if (dirtyFields.includes("nextDate")) patch.next_payment_date = payload.next_payment_date;
+      if (dirtyFields.includes("invoice")) {
+        patch.invoice_status = payload.invoice_status;
+        patch.invoice_number = payload.invoice_number;
+      }
+      if (dirtyFields.includes("manualStatus")) {
+        patch.row_status = payload.row_status;
+        metadata.manual_status = payload.metadata?.manual_status ?? null;
+        metadataChanged = true;
+      }
+      if (dirtyFields.includes("note")) {
+        patch.memo = payload.memo;
+        patch.reminder_state = payload.reminder_state;
+      }
+      if (metadataChanged) patch.metadata = metadata;
+      return patch;
+    };
+
+    const expectedUpdates = [];
+    const expectedInsertIdentities = [];
     for (const { payload, sourceRow } of payloadEntries) {
       const dbId = textOrEmpty(sourceRow._dbId);
       if (dbId && existingById.has(dbId)) {
+        const patch = existingPatchFor(existingById.get(dbId), payload, sourceRow);
+        if (!patch) continue;
         const { error: updateError } = await client
           .from("payment_month_rows")
-          .update(payload)
+          .update(patch)
           .eq("id", dbId);
         if (updateError) throw updateError;
+        expectedUpdates.push({ id: dbId, patch });
         continue;
       }
       const identity = identityFor(payload);
@@ -805,7 +1101,45 @@
       const { error: insertError } = await client.from("payment_month_rows").insert(payload);
       if (insertError) throw insertError;
       existingIdentities.add(identity);
+      expectedInsertIdentities.push({ identity, payload });
     }
+
+    const { data: verifiedRows, error: verificationError } = await client
+      .from("payment_month_rows")
+      .select("*")
+      .eq("branch_id", branch.id)
+      .eq("year", Number(context.year))
+      .eq("month", month);
+    if (verificationError) throw verificationError;
+    const verifiedById = new Map((verifiedRows || []).map((row) => [textOrEmpty(row.id), row]));
+    expectedUpdates.forEach(({ id, patch }) => {
+      const saved = verifiedById.get(id);
+      if (!saved) throw new Error(`繳費表寫入後找不到資料列 ${id}`);
+      assertFieldsMatch(saved, patch, Object.keys(patch), "繳費表");
+    });
+    expectedInsertIdentities.forEach(({ identity, payload }) => {
+      const saved = (verifiedRows || []).find((row) => identityFor(row) === identity);
+      if (!saved) throw new Error(`繳費表新增後找不到資料列 ${payload.customer_no || ""}`);
+      assertFieldsMatch(saved, payload, [
+        "section",
+        "customer_no",
+        "customer_name",
+        "company_name",
+        "payment_cycle",
+        "amount_due",
+        "amount_paid",
+        "payment_date",
+        "next_payment_date",
+        "invoice_status",
+        "row_status",
+        "memo",
+      ], "繳費表");
+    });
+    return {
+      verified: true,
+      updated: expectedUpdates.length,
+      inserted: expectedInsertIdentities.length,
+    };
   };
 
   const syncDraftEdits = async (edits) => {
@@ -853,6 +1187,65 @@
       const { error: insertError } = await client.from("message_drafts").insert(inserts);
       if (insertError) throw insertError;
     }
+    const { data: verifiedRows, error: verificationError } = await client
+      .from("message_drafts")
+      .select("id,body,metadata");
+    if (verificationError) throw verificationError;
+    Object.entries(edits).forEach(([key, body]) => {
+      const [sourceId, indexText] = key.split("::");
+      const messageIndex = Number(indexText || 0);
+      const saved = (verifiedRows || []).find((row) => (
+        row.metadata?.source_id === sourceId
+        && Number(row.metadata?.source_message_index || 0) === messageIndex
+      ));
+      if (!saved || String(saved.body ?? "") !== String(body)) {
+        throw new Error(`訊息草稿 ${key} 寫入後核對失敗`);
+      }
+    });
+    return { verified: true, rows: Object.keys(edits).length };
+  };
+
+  const syncPageState = async (stateKey, payload) => {
+    if (!savedPageStateKeys.has(stateKey)) return { verified: true, rows: 0 };
+    const client = await getClient();
+    const statePayload = {
+      state_key: stateKey,
+      payload: payload && typeof payload === "object" ? payload : {},
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = await client
+      .from("page_saved_state")
+      .upsert(statePayload, { onConflict: "state_key" });
+    if (error) throw error;
+    const { data: saved, error: verificationError } = await client
+      .from("page_saved_state")
+      .select("state_key,payload")
+      .eq("state_key", stateKey)
+      .maybeSingle();
+    if (verificationError) throw verificationError;
+    if (!saved || !valuesMatch(saved.payload, statePayload.payload)) {
+      throw new Error(`${stateKey} 寫入後核對失敗`);
+    }
+    return { verified: true, rows: 1 };
+  };
+
+  const hydrateSavedPageState = async (page) => {
+    const keysByPage = {
+      contracts: ["hj-contract-drafts-v2"],
+      drafts: ["hjDraftNoticeLogV1"],
+    };
+    const keys = keysByPage[page] || [];
+    if (!keys.length) return { rows: 0 };
+    const client = await getClient();
+    const { data, error } = await client
+      .from("page_saved_state")
+      .select("state_key,payload")
+      .in("state_key", keys);
+    if (error) throw error;
+    (data || []).forEach((row) => {
+      localStorage.setItem(row.state_key, JSON.stringify(row.payload || {}));
+    });
+    return { rows: (data || []).length };
   };
 
   const paymentRefKey = (ref = {}, fallbackYear = 2026) => [
@@ -932,9 +1325,22 @@
         .eq("id", row.id);
       if (updateError) throw updateError;
     }
-    if (matches.length) return;
+    if (matches.length) {
+      const { data: verified, error: verificationError } = await client
+        .from("message_drafts")
+        .select("id,status,sent_at,metadata")
+        .in("id", matches.map((row) => row.id));
+      if (verificationError) throw verificationError;
+      matches.forEach((row) => {
+        const saved = (verified || []).find((itemRow) => itemRow.id === row.id);
+        if (!saved || saved.status !== "posted_waiting" || !saved.sent_at) {
+          throw new Error("訊息通知狀態寫入後核對失敗");
+        }
+      });
+      return { verified: true, rows: matches.length };
+    }
     const firstMessage = Array.isArray(item.messages) ? item.messages[0] : null;
-    const { error: insertError } = await client.from("message_drafts").insert({
+    const insertPayload = {
       branch_id: branch.id,
       channel: "line",
       draft_type: item.kind === "續約" ? "renewal" : "payment_reminder",
@@ -944,8 +1350,17 @@
       sent_at: notifiedAt,
       requires_human_confirmation: true,
       metadata: itemMetadata,
-    });
+    };
+    const { data: inserted, error: insertError } = await client
+      .from("message_drafts")
+      .insert(insertPayload)
+      .select("id,status,sent_at,metadata")
+      .single();
     if (insertError) throw insertError;
+    if (!inserted?.id || inserted.status !== "posted_waiting" || !inserted.sent_at) {
+      throw new Error("訊息通知狀態新增後核對失敗");
+    }
+    return { verified: true, rows: 1 };
   };
 
   const parseAutoDraftSourceId = (sourceId) => {
@@ -963,32 +1378,162 @@
     if (window.__hjDbLocalStorageSyncInstalled) return;
     window.__hjDbLocalStorageSyncInstalled = true;
     const originalSetItem = Storage.prototype.setItem;
+    const originalRemoveItem = Storage.prototype.removeItem;
+    const outboxStorageKey = "hj-db-pending-writes-v1";
     const queue = new Map();
     let timer = null;
+    let flushPromise = null;
+    let lastState = "idle";
+
+    const renderSaveState = (state, detail = "") => {
+      lastState = state;
+      if (typeof document?.dispatchEvent === "function" && typeof CustomEvent === "function") {
+        document.dispatchEvent(new CustomEvent("hj-db-save-state", {
+          detail: { state, detail, pending: queue.size },
+        }));
+      }
+      if (typeof document?.querySelector !== "function" || !document.body) return;
+      let indicator = document.querySelector("#hjDbSaveState");
+      if (!indicator) {
+        indicator = document.createElement("div");
+        indicator.id = "hjDbSaveState";
+        Object.assign(indicator.style, {
+          position: "fixed",
+          right: "16px",
+          bottom: "16px",
+          zIndex: "100000",
+          maxWidth: "360px",
+          padding: "10px 14px",
+          borderRadius: "12px",
+          fontSize: "14px",
+          fontWeight: "700",
+          boxShadow: "0 8px 24px rgba(15, 23, 42, 0.18)",
+          pointerEvents: "none",
+          transition: "opacity .2s ease",
+        });
+        document.body.appendChild(indicator);
+      }
+      const display = {
+        saving: ["資料正在存入資料庫…", "#fffbeb", "#92400e", "#f59e0b"],
+        saved: ["已存入資料庫並核對", "#ecfdf5", "#065f46", "#10b981"],
+        error: ["資料庫未存成功，內容已保留待重試", "#fff1f2", "#9f1239", "#fb7185"],
+        idle: ["", "transparent", "transparent", "transparent"],
+      }[state] || ["", "transparent", "transparent", "transparent"];
+      indicator.textContent = display[0];
+      indicator.title = detail || "";
+      indicator.style.background = display[1];
+      indicator.style.color = display[2];
+      indicator.style.border = `1px solid ${display[3]}`;
+      indicator.style.opacity = state === "idle" ? "0" : "1";
+      if (state === "saved") {
+        window.setTimeout(() => {
+          if (lastState === "saved" && queue.size === 0) renderSaveState("idle");
+        }, 2200);
+      }
+    };
+
+    const persistOutbox = () => {
+      if (!queue.size) {
+        originalRemoveItem.call(localStorage, outboxStorageKey);
+        return;
+      }
+      originalSetItem.call(localStorage, outboxStorageKey, JSON.stringify(
+        Object.fromEntries(queue.entries()),
+      ));
+    };
+
+    const loadOutbox = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(outboxStorageKey) || "{}");
+        Object.entries(saved && typeof saved === "object" ? saved : {}).forEach(([key, value]) => {
+          if (
+            typeof value === "string"
+            && (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1" || savedPageStateKeys.has(key))
+          ) {
+            queue.set(key, value);
+          }
+        });
+      } catch (error) {
+        console.warn("Pending write outbox could not be read", error);
+      }
+    };
 
     const flush = async () => {
-      const entries = Array.from(queue.entries());
-      queue.clear();
-      for (const [key, value] of entries) {
-        try {
-          const parsed = JSON.parse(value);
-          if (parsePaymentStorageKey(key)) await syncPaymentRows(key, parsed);
-          else if (key === "hjDraftMessageEditsV1") await syncDraftEdits(parsed);
-        } catch (error) {
-          console.warn("DB sync failed", key, error);
+      if (flushPromise) return flushPromise;
+      flushPromise = (async () => {
+        if (!queue.size) return { verified: true, pending: 0 };
+        renderSaveState("saving");
+        const errors = [];
+        for (const [key, value] of Array.from(queue.entries())) {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsePaymentStorageKey(key)) await syncPaymentRows(key, parsed);
+            else if (key === "hjDraftMessageEditsV1") await syncDraftEdits(parsed);
+            else if (savedPageStateKeys.has(key)) await syncPageState(key, parsed);
+            if (queue.get(key) === value) queue.delete(key);
+            persistOutbox();
+          } catch (error) {
+            errors.push({ key, error });
+            console.error("DB sync failed; write retained for retry", key, error);
+          }
         }
-      }
+        if (errors.length) {
+          renderSaveState("error", errors.map(({ key, error }) => `${key}: ${error?.message || error}`).join("\n"));
+          window.clearTimeout(timer);
+          timer = window.setTimeout(flush, 5000);
+          const failure = new Error("資料尚未全部存入資料庫，已保留待重試");
+          failure.causes = errors;
+          throw failure;
+        }
+        renderSaveState("saved");
+        return { verified: true, pending: queue.size };
+      })().finally(() => {
+        flushPromise = null;
+      });
+      return flushPromise;
+    };
+
+    const queueWrite = (key, value) => {
+      queue.set(key, value);
+      persistOutbox();
+      renderSaveState("saving");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        flush().catch(() => {
+          // The visible error state and durable outbox already preserve the failure.
+        });
+      }, 700);
     };
 
     Storage.prototype.setItem = function setItemWithDbSync(key, value) {
       originalSetItem.call(this, key, value);
       if (this !== localStorage) return;
-      if (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1") {
-        queue.set(key, value);
-        window.clearTimeout(timer);
-        timer = window.setTimeout(flush, 700);
+      if (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1" || savedPageStateKeys.has(key)) {
+        queueWrite(key, value);
       }
     };
+
+    loadOutbox();
+    if (queue.size) {
+      renderSaveState("saving");
+      timer = window.setTimeout(() => {
+        flush().catch(() => {});
+      }, 0);
+    }
+    if (typeof window.addEventListener === "function") {
+      window.addEventListener("online", () => {
+        if (queue.size) flush().catch(() => {});
+      });
+      window.addEventListener("beforeunload", (event) => {
+        if (!queue.size && !flushPromise) return;
+        event.preventDefault();
+        event.returnValue = "仍有資料尚未存入資料庫";
+      });
+    }
+
+    window.HJ_DB.flushPendingWrites = flush;
+    window.HJ_DB.pendingWriteCount = () => queue.size;
+    window.HJ_DB.saveState = () => ({ state: lastState, pending: queue.size });
   };
 
   const clearLegacyLocalDataForDb = () => {
@@ -1024,5 +1569,6 @@
     markCrmYearSyncPending,
     saveCrmRow,
     markDraftItemNotified,
+    hydrateSavedPageState,
   };
 })();

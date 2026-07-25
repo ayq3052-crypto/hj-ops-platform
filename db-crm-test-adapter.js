@@ -1,5 +1,6 @@
 (() => {
   const crmStorageKey = "hj-crm-clean-v5-data-repair";
+  const requiredTestRuntimeVersion = "20260723-payment-history-preserve-1";
   let platformDataPromise = null;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -18,8 +19,15 @@
     return payload;
   };
 
+  const requireCurrentTestRuntime = (payload) => {
+    if (payload?.testRuntimeVersion !== requiredTestRuntimeVersion) {
+      throw new Error("測試 CRM 與繳費表版本不同步，請重新開啟兩個測試連結");
+    }
+    return payload;
+  };
+
   const loadPlatformData = async () => {
-    if (!platformDataPromise) platformDataPromise = requestJson("/__hj_payment_test_data");
+    if (!platformDataPromise) platformDataPromise = requestJson("/__hj_payment_test_data").then(requireCurrentTestRuntime);
     return platformDataPromise;
   };
 
@@ -41,40 +49,26 @@
   };
 
   const syncCrmYearData = async (crmData) => {
-    const result = await requestJson("/__hj_test_crm/full-source", {
+    const result = requireCurrentTestRuntime(await requestJson("/__hj_test_crm/full-source", {
       method: "PUT",
       body: JSON.stringify({ crmSource: crmData }),
-    });
+    }));
     platformDataPromise = null;
     return { rows: result.rows || 0 };
   };
 
   const saveCrmRow = async (row, options = {}) => {
-    const result = await requestJson("/__hj_test_crm/full-row", {
+    const result = requireCurrentTestRuntime(await requestJson("/__hj_test_crm/full-row", {
       method: "PUT",
-      body: JSON.stringify({ venue: row.venue, year: options.year, row }),
-    });
+      body: JSON.stringify({ venue: row.venue, year: options.year, row, options }),
+    }));
     platformDataPromise = null;
     return result.row;
   };
 
   const installLocalStorageSync = () => {
-    if (window.__hjTestCrmStorageSyncInstalled) return;
+    // 隔離頁也走和正式頁相同的顯式儲存路徑；不再用 localStorage 背景整批覆蓋。
     window.__hjTestCrmStorageSyncInstalled = true;
-    const originalSetItem = Storage.prototype.setItem;
-    Storage.prototype.setItem = function setItemWithIsolatedCrmSync(key, value) {
-      originalSetItem.call(this, key, value);
-      if (this !== localStorage || key !== crmStorageKey) return;
-      try {
-        const parsed = JSON.parse(value);
-        window.__HJ_TEST_CRM_LAST_SYNC = syncCrmYearData(parsed).catch((error) => {
-          console.error("隔離 CRM 完整同步失敗", error);
-          throw error;
-        });
-      } catch (error) {
-        console.error("隔離 CRM 資料格式錯誤", error);
-      }
-    };
   };
 
   window.HJ_DB = {

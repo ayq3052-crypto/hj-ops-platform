@@ -1,10 +1,12 @@
 (function initPaymentSmartImportV2(root, factory) {
   const pricingApi = root.HJContractPricing || (typeof module === "object" && module.exports ? require("./contract-pricing.js") : null);
   const dateApi = root.HJRocDate || (typeof module === "object" && module.exports ? require("./roc-date.js") : null);
-  const api = factory(root.HJCustomerId, pricingApi, dateApi);
+  const auditApi = root.HJPaymentAudit || (typeof module === "object" && module.exports ? require("./payment-audit-engine.js") : null);
+  const cycleApi = root.HJCrmCycle || (typeof module === "object" && module.exports ? require("./crm-cycle.js") : null);
+  const api = factory(root.HJCustomerId, pricingApi, dateApi, auditApi, cycleApi);
   if (typeof module === "object" && module.exports) module.exports = api;
   root.HJPaymentSmartImportV2 = api;
-})(typeof globalThis !== "undefined" ? globalThis : window, function paymentSmartImportFactory(customerIdApi, pricingApi, dateApi) {
+})(typeof globalThis !== "undefined" ? globalThis : window, function paymentSmartImportFactory(customerIdApi, pricingApi, dateApi, auditApi, cycleApi) {
   const annualCycles = new Set(["Y", "2Y", "3Y"]);
 
   function normalizeAscii(value) {
@@ -32,6 +34,13 @@
     if (normalized === "6M") return 6;
     if (annualCycles.has(normalized)) return 12;
     return 0;
+  }
+
+  function rocMonthFromIndex(monthIndex) {
+    if (!Number.isInteger(monthIndex)) return "";
+    const westernYear = Math.floor(monthIndex / 12);
+    const month = (monthIndex % 12) + 1;
+    return `${westernYear - 1911}/${String(month).padStart(2, "0")}`;
   }
 
   function parseRocDate(value) {
@@ -77,11 +86,7 @@
   }
 
   function displaySection(service, paymentCycle) {
-    const kind = serviceKind(service);
-    if (kind === "office") return "辦公室";
-    if (kind === "free-seat") return "自由座";
-    if (kind === "registration") return annualCycles.has(cycle(paymentCycle)) ? "年繳 / 2Y" : "營登";
-    return "";
+    return auditApi?.displaySectionForServiceAndCycle?.(service, paymentCycle) || "";
   }
 
   function field(source, ...keys) {
@@ -90,6 +95,21 @@
       if (value !== undefined && value !== null && text(value) !== "") return value;
     }
     return "";
+  }
+
+  function positiveInteger(value) {
+    const parsed = Number(text(value));
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
+  }
+
+  function contractYearsForCycle(source, start, end) {
+    const explicit = positiveInteger(field(source, "contractYears", "contract_years", "年數"));
+    if (explicit) return explicit;
+    const staged = positiveInteger(field(source, "stage1Years")) + positiveInteger(field(source, "stage2Years"));
+    if (staged) return staged;
+    if (!start || !end) return 0;
+    const monthSpan = end.monthIndex - start.monthIndex;
+    return monthSpan > 0 && monthSpan % 12 === 0 ? monthSpan / 12 : 0;
   }
 
   function normalizeCrmRecord(source) {
@@ -103,13 +123,15 @@
       if (stage.start) stage.start = normalizeRocDate(stage.start);
       if (stage.end) stage.end = normalizeRocDate(stage.end);
     });
-    return {
+    const sourcePaymentCycle = cycle(field(source, "sourcePaymentCycle", "paymentCycle", "payment_cycle", "繳費方式", "cycle"));
+    const normalized = {
       venue: text(field(source, "venue", "branch_code", "館別")),
       customerNo: text(field(source, "customerNo", "customer_no", "編號", "id")),
       name: text(field(source, "name", "customer_name", "姓名")),
       company: text(field(source, "company", "company_name", "公司名稱", "公司")),
       service: text(field(source, "service", "service_type", "項目", "服務項目", "item")),
-      paymentCycle: cycle(field(source, "paymentCycle", "payment_cycle", "繳費方式", "cycle")),
+      paymentCycle: sourcePaymentCycle,
+      sourcePaymentCycle,
       contractStart: normalizeRocDate(field(source, "contractStart", "contract_start", "起始日期", "start")),
       contractEnd: normalizeRocDate(field(source, "contractEnd", "contract_end", "合約到期日", "end")),
       amount: text(field(source, "amount", "monthly_amount", "金額", "price")),
@@ -125,7 +147,13 @@
       stage2Kind: text(field(source, "stage2Kind")),
       pricingStages,
       status: text(field(source, "status", "crm_status", "folder")) || "active",
+      cycleState: text(field(source, "cycleState", "cycle_state", "_cycleState")) || "historical",
+      contractPeriod: Number(field(source, "contractPeriod", "contract_period", "_contractPeriod")) || 0,
     };
+    const start = parseRocDate(normalized.contractStart);
+    const end = parseRocDate(normalized.contractEnd);
+    normalized.contractYears = contractYearsForCycle(source, start, end);
+    return normalized;
   }
 
   function parseMoney(value) {
@@ -156,7 +184,9 @@
   }
 
   function monthlyPriceAt(crm, dueMonthIndex) {
-    if (pricingApi?.monthlyPriceAt) return pricingApi.monthlyPriceAt(crm, dueMonthIndex);
+    if (pricingApi?.monthlyPriceAt) {
+      return pricingApi.monthlyPriceAt({ ...crm, paymentCycle: crm.sourcePaymentCycle || crm.paymentCycle }, dueMonthIndex);
+    }
     const start = parseRocDate(crm.contractStart);
     if (!start) return { error: "CRM 合約起始日期無法判讀" };
     const plan = parseExplicitPricePlan(crm.pricePlan) || parseExplicitPricePlan(crm.amount) || parseConfirmedTwoYearPrices(crm.amount, crm.paymentCycle);
@@ -252,6 +282,11 @@
     if (!crm.customerNo) errors.push("CRM 編號缺漏");
     if (!crm.company && !crm.name) errors.push("CRM 姓名／公司缺漏");
     if (["ended", "已結束"].includes(crm.status.toLowerCase())) errors.push("CRM 客戶已結束");
+    const establishedCycle = cycleApi?.isConfirmed
+      ? cycleApi.isConfirmed(crm, input?.crmYear)
+      : ["historical", "confirmed"].includes(crm.cycleState);
+    if (mode === "renewal" && !establishedCycle) errors.push("CRM 尚未確認為新續約循環");
+    if (["legacy_generated", "invalidated", "draft"].includes(crm.cycleState)) errors.push("CRM 不是可帶入的已確認合約循環");
     const service = serviceKind(crm.service);
     if (!service) errors.push("CRM 服務項目無法判讀");
     const interval = cycleMonths(crm.paymentCycle);
@@ -275,16 +310,41 @@
       const initialPrice = monthlyPriceAt(crm, start.monthIndex);
       if (initialPrice.error) errors.push(initialPrice.error);
     }
-    if (errors.length) return { ok: false, crm, mode, errors, warnings, payments: [], reminder: null };
+    if (errors.length) return { ok: false, crm, mode, errors, warnings, currentPayment: null, payments: [], reminder: null };
 
     const explicit = latestExplicitNext(crm, history);
+    const currentPrice = mode === "renewal" ? monthlyPriceAt(crm, start.monthIndex) : null;
+    const currentDue = monthFromIndex(start.monthIndex, start.day);
+    const currentPayment = mode === "renewal" && !currentPrice?.error ? {
+      type: "current-renewal-payment",
+      venue: crm.venue,
+      customerNo: crm.customerNo,
+      name: crm.name,
+      company: crm.company,
+      service: crm.service,
+      section: displaySection(crm.service, crm.paymentCycle),
+      paymentCycle: crm.paymentCycle,
+      contractStart: crm.contractStart,
+      contractEnd: crm.contractEnd,
+      dueYear: currentDue.westernYear,
+      dueMonth: currentDue.month,
+      dueKey: currentDue.key,
+      monthlyPrice: currentPrice.monthly,
+      amountDue: currentPrice.monthly * interval,
+      priceStage: currentPrice.stage,
+      note: "本期續約收款沿用目前到期列，不另增重複列",
+    } : null;
     let firstMonthIndex = start.monthIndex;
     if (explicit) {
       firstMonthIndex = explicit.next.monthIndex;
       warnings.push(`依繳費表明確下次繳費日 ${explicit.next.rocYear}/${String(explicit.next.month).padStart(2, "0")} 排程`);
     } else if (mode === "renewal") {
-      firstMonthIndex = start.monthIndex;
-      warnings.push("新循環依 CRM 合約起始月份開始新增");
+      firstMonthIndex = start.monthIndex + interval;
+      warnings.push("本次續約由原到期列處理；新循環只從下一次繳費月份開始新增");
+    }
+    if (mode === "renewal" && firstMonthIndex <= start.monthIndex) {
+      firstMonthIndex = start.monthIndex + interval;
+      warnings.push("本次續約月份沿用原到期列，不另外建立重複列");
     }
 
     const existing = existingMonthKeys(crm, history);
@@ -318,17 +378,20 @@
         priceStage: price.stage,
         paidDate: "",
         paidAmount: "",
+        nextDate: "",
         invoice: "",
         note: "測試版智慧帶入",
       });
     }
 
+    const reminderPrice = openEndedFreeSeat ? null : monthlyPriceAt(crm, end.monthIndex);
     return {
       ok: errors.length === 0,
       crm,
       mode,
       errors,
       warnings,
+      currentPayment: errors.length ? null : currentPayment,
       payments: errors.length ? [] : payments,
       reminder: errors.length || openEndedFreeSeat ? null : {
         type: "renewal-reminder",
@@ -344,6 +407,9 @@
         dueMonth: end.month,
         dueKey: `${end.westernYear}/${String(end.month).padStart(2, "0")}`,
         section: displaySection(crm.service, crm.paymentCycle),
+        monthlyPrice: reminderPrice?.monthly ?? null,
+        amountDue: reminderPrice?.monthly == null ? null : reminderPrice.monthly * interval,
+        priceStage: reminderPrice?.stage || "",
       },
     };
   }
@@ -371,6 +437,7 @@
     normalizeCrmRecord,
     normalizeCustomerNo: customerNo,
     cycleMonths,
+    rocMonthFromIndex,
     parseRocDate,
     normalizeRocDate,
     serviceKind,

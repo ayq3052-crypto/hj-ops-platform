@@ -14,7 +14,8 @@
     if (!Number.isInteger(rawYear) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
     const westernYear = rawYear >= 1911 ? rawYear : rawYear + 1911;
     const rocYear = westernYear - 1911;
-    if (westernYear < 2000 || month < 1 || month > 12 || day < 1) return null;
+    // CRM 的生日會早於 2000 年；日期正規化不可只接受合約年代。
+    if (westernYear < 1900 || month < 1 || month > 12 || day < 1) return null;
     const date = new Date(Date.UTC(westernYear, month - 1, day));
     if (date.getUTCFullYear() !== westernYear || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
     return {

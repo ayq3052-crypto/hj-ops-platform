@@ -590,7 +590,7 @@
     return envelope ? clone(envelope) : null;
   }
 
-  global.HJPaymentAudit = Object.freeze({
+  const api = Object.freeze({
     auditYear,
     auditCustomer,
     authoritativeExpectedMonths,
@@ -600,4 +600,6 @@
     runFromPlatformGlobals,
     getLastReport,
   });
+  global.HJPaymentAudit = api;
+  if (typeof module === "object" && module.exports) module.exports = api;
 })(typeof window !== "undefined" ? window : globalThis);

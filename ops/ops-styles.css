@@ -1750,6 +1750,15 @@ svg {
   margin-left: auto;
 }
 
+.annual-payment-search-hint {
+  flex: 0 1 310px;
+  min-width: 180px;
+  color: var(--teal-ink);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .add-customer-toggle {
   min-height: 36px;
   padding: 0 12px;
@@ -3399,6 +3408,11 @@ svg {
     max-width: none;
     min-width: 0;
     margin-left: 0;
+  }
+
+  .annual-payment-search-hint {
+    min-width: 0;
+    width: 100%;
   }
 
   .smart-brief,

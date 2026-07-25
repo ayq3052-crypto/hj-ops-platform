@@ -1365,7 +1365,7 @@ function noticeSummary(item) {
   return `上次已貼：${notice.lastNotifiedAt}，第 ${age + 1} 天，滿 ${FOLLOW_UP_DAYS} 天會再回今日該貼`;
 }
 
-function markDraftNotified(id) {
+async function markDraftNotified(id) {
   const item = draftItems.find((draft) => draft.id === id) || { id };
   noticeKeysForItem(item).forEach((key) => {
     const previous = noticeLog[key] || {};
@@ -1375,9 +1375,12 @@ function markDraftNotified(id) {
     };
   });
   saveNoticeLog();
-  window.HJ_DB?.markDraftItemNotified?.(item)?.catch((error) => {
-    console.warn("同步已貼通知狀態失敗", error);
-  });
+  if (typeof window.HJ_DB?.markDraftItemNotified === "function") {
+    await window.HJ_DB.markDraftItemNotified(item);
+  }
+  if (typeof window.HJ_DB?.flushPendingWrites === "function") {
+    await window.HJ_DB.flushPendingWrites();
+  }
 }
 
 function visibleDrafts() {
@@ -1681,7 +1684,7 @@ function renderAll() {
   renderList();
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const filter = event.target.closest("[data-draft-filter]");
   if (filter) {
     activeStatus = filter.dataset.draftFilter;
@@ -1727,8 +1730,13 @@ document.addEventListener("click", (event) => {
 
   const markButton = event.target.closest("[data-mark-notified]");
   if (markButton) {
-    markDraftNotified(markButton.dataset.markNotified);
-    showToast("已記錄貼過通知，未收款會繼續追");
+    try {
+      await markDraftNotified(markButton.dataset.markNotified);
+      showToast("已存入資料庫：貼過通知，未收款會繼續追");
+    } catch (error) {
+      console.error("同步已貼通知狀態失敗", error);
+      showToast("資料庫尚未存成功；內容已保留待重試");
+    }
     renderAll();
     return;
   }

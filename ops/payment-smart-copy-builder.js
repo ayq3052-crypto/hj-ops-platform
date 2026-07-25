@@ -6,6 +6,7 @@
   if (!engine) throw new Error("payment smart import v2 尚未載入");
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const monthLabel = (month) => `${Number(month)}月`;
+  const baseYear = 2026;
 
   function build({ crmSource, paymentImportedByYear }) {
     const source = clone(paymentImportedByYear || {});
@@ -23,13 +24,25 @@
     }
     const history = ["taichung", "huanrui"].flatMap((venue) => Object.entries(byYear[venue]["2026"]).flatMap(([label, rows]) =>
       rows.map((row) => ({ ...row, venue, year: 2026, month: Number(label.replace(/\D/g, "")), source_snapshot: row }))));
-    const activeCrmRows = ["taichung", "huanrui"].flatMap((venue) => {
+    const activeCrmRowsRaw = ["taichung", "huanrui"].flatMap((venue) => {
       const venueData = crmSource?.venues?.[venue];
-      const activeYear = venueData?.activeYear || Object.keys(venueData?.years || {}).sort().at(-1);
-      return (venueData?.years?.[activeYear] || []).filter((row) => row.folder !== "ended").map((row) => ({ ...row, venue }));
+      return Object.entries(venueData?.years || {}).flatMap(([year, rows]) => (rows || [])
+        .filter((row) => {
+          const state = String(row?.cycleState || row?.cycle_state || "historical");
+          return row.folder !== "ended" && ["historical", "confirmed"].includes(state);
+        })
+        .map((row) => ({ ...row, venue, crmYear: Number(year) })));
     });
-    const maxContractYear = Math.max(2028, ...activeCrmRows.map((crm) => engine.parseRocDate(crm.end)?.westernYear || 2026));
-    const generatedYears = Array.from({ length: maxContractYear - 2026 + 1 }, (_, index) => 2026 + index);
+    const activeCrmRows = [];
+    const seenCrmCycles = new Set();
+    activeCrmRowsRaw.forEach((row) => {
+      const key = `${row.venue}|${String(row.id || "").normalize("NFKC").trim().toUpperCase()}|p${Number(row.contractPeriod || row.contract_period) || 0}|${row.start}|${row.end}`;
+      if (seenCrmCycles.has(key)) return;
+      seenCrmCycles.add(key);
+      activeCrmRows.push(row);
+    });
+    const maxContractYear = Math.max(baseYear, ...activeCrmRows.map((crm) => engine.parseRocDate(crm.end)?.westernYear || baseYear));
+    const generatedYears = Array.from({ length: maxContractYear - baseYear + 1 }, (_, index) => baseYear + index);
 
     const addGenerated = (row) => {
       const venue = row.venue;
@@ -40,7 +53,7 @@
       const legacy = {
         _testGenerated: true, section: row.section, id: row.customerNo, name: row.name || "", company: row.company || "",
         cycle: row.paymentCycle || "", start: row.contractStart || "", end: row.contractEnd || "",
-        price: row.monthlyPrice == null ? "" : `${row.monthlyPrice}/m`, paidDate: "", paidAmount: "", nextDate: "", invoice: "",
+        price: row.monthlyPrice == null ? "" : `${row.monthlyPrice}/m`, paidDate: "", paidAmount: "", nextDate: row.nextDate || "", invoice: "",
         manualStatus: "normal", note: row.type === "renewal-reminder" ? "合約到期，先確認續約" : "測試版 V2 由 2026 真實資料與 CRM 新循環帶入",
       };
       const type = legacy.note.startsWith("合約到期") ? "renewal-reminder" : "payment";
@@ -55,7 +68,14 @@
       for (const crm of activeCrmRows.filter((row) => row.venue === venue)) {
         const inputCrm = {
           venue, customerNo: crm.id, name: crm.name, company: crm.company, service: crm.item, paymentCycle: crm.cycle,
-          contractStart: crm.start, contractEnd: crm.end, amount: crm.amount, pricePlan: crm.pricePlan, status: "active",
+          contractStart: crm.start, contractEnd: crm.end, contractYears: crm.contractYears,
+          amount: crm.amount, pricePlan: crm.pricePlan,
+          hasSecondStage: crm.hasSecondStage,
+          stage1Years: crm.stage1Years, stage1Start: crm.stage1Start, stage1End: crm.stage1End,
+          stage2Years: crm.stage2Years, stage2Start: crm.stage2Start, stage2End: crm.stage2End,
+          stage2Amount: crm.stage2Amount, stage2Kind: crm.stage2Kind,
+          pricingStages: crm.pricingStages,
+          status: "active",
         };
         if (engine.serviceKind(crm.item) === "free-seat" && !engine.parseRocDate(crm.end)) {
           for (const year of generatedYears) for (let month = 1; month <= 12; month += 1) {
@@ -67,9 +87,8 @@
         const start = engine.parseRocDate(crm.start);
         const preview = engine.buildPreview({ crm: inputCrm, history, mode: "new", targetYear: start?.westernYear, targetMonth: start?.month });
         for (const row of preview.payments.filter((item) => generatedYears.includes(item.dueYear))) addGenerated(row);
-        if (preview.reminder && preview.reminder.dueYear >= 2027 && generatedYears.includes(preview.reminder.dueYear)) {
-          const price = engine.monthlyPriceAt(preview.crm, preview.reminder.dueYear * 12 + preview.reminder.dueMonth - 1);
-          addGenerated({ ...preview.reminder, name: crm.name, company: crm.company, paymentCycle: crm.cycle, contractStart: crm.start, contractEnd: crm.end, monthlyPrice: price.monthly });
+        if (preview.reminder && preview.reminder.dueYear > baseYear && generatedYears.includes(preview.reminder.dueYear)) {
+          addGenerated(preview.reminder);
         }
       }
     }

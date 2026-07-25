@@ -1,14 +1,14 @@
 (() => {
   const pageScripts = {
-    crm: ["./ops/roc-date.js?v=20260721-canonical-date-1", "./ops/payment-audit-engine.js?v=20260721-canonical-v-1", "./app.js?v=20260721-canonical-date-1"],
-    contracts: ["./contracts.js?v=20260721-canonical-v-1"],
+    crm: ["./ops/roc-date.js?v=20260725-formal-swap-1", "./ops/payment-audit-engine.js?v=20260725-formal-swap-1", "./app.js?v=20260725-formal-swap-1"],
+    contracts: ["./contracts.js?v=20260725-formal-swap-1"],
     payments: [
-      "./ops/roc-date.js?v=20260721-canonical-date-1",
-      "./ops/contract-pricing.js?v=20260721-structured-stage-1",
-      "./ops/payment-audit-engine.js?v=20260721-canonical-v-1",
-      "./ops/payments.js?v=20260721-structured-stage-1",
+      "./ops/roc-date.js?v=20260725-formal-swap-1",
+      "./ops/contract-pricing.js?v=20260725-formal-swap-1",
+      "./ops/payment-audit-engine.js?v=20260725-formal-swap-1",
+      "./ops/payments.js?v=20260725-formal-swap-1",
     ],
-    drafts: ["./ops/drafts.js?v=20260721-canonical-v-1"],
+    drafts: ["./ops/drafts.js?v=20260725-formal-swap-1"],
   };
 
   const statusText = {
@@ -67,11 +67,12 @@
     try {
       const parameters = new URLSearchParams(window.location.search);
       if (page === "crm" && parameters.get("isolated-test") === "1") {
-        await loadScript("./db-crm-test-adapter.js?v=20260721-shared-formal-crm-1");
+        await loadScript("./db-crm-test-adapter.js?v=20260725-formal-swap-1");
         document.title = "HJ 客戶資料｜隔離測試";
       }
       await window.HJ_DB.ensureSession();
       await window.HJ_DB.applyPlatformGlobals();
+      await window.HJ_DB.hydrateSavedPageState?.(page);
       window.HJCustomerId?.install(document);
       const crmMigration = await window.HJ_DB.migrateLegacyCrmYears();
       if (crmMigration.migrated) {
