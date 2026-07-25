@@ -104,6 +104,28 @@
     return `${Number(match[1]) + 1911}-${String(Number(match[2])).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
   };
 
+  const validIsoDate = (year, month, day) => {
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+    if (
+      date.getUTCFullYear() !== Number(year)
+      || date.getUTCMonth() + 1 !== Number(month)
+      || date.getUTCDate() !== Number(day)
+    ) return null;
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+
+  const paymentDateForDb = (value, fallbackWesternYear) => {
+    const text = textOrEmpty(value);
+    if (!text) return null;
+    const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) return validIsoDate(isoMatch[1], isoMatch[2], isoMatch[3]);
+    const rocDate = rocToIso(text);
+    if (rocDate) return rocDate;
+    const monthDay = text.match(/^(\d{1,2})[/.月-](\d{1,2})日?$/);
+    if (!monthDay || !Number.isFinite(Number(fallbackWesternYear))) return null;
+    return validIsoDate(Number(fallbackWesternYear), monthDay[1], monthDay[2]);
+  };
+
   const dateKeyFromIso = (value) => {
     const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
     return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
@@ -930,8 +952,9 @@
       payment_cycle: normalizeCycle(row.cycle),
       amount_due: numericMoney(row.price),
       amount_paid: numericMoney(row.paidAmount),
-      payment_date: textOrEmpty(row.paidDate) || null,
-      next_payment_date: textOrEmpty(row.nextDate) || null,
+      // 人工欄位仍原樣保存在 source_snapshot；資料庫日期欄只接收可安全判讀的完整日期。
+      payment_date: paymentDateForDb(row.paidDate, context.year),
+      next_payment_date: paymentDateForDb(row.nextDate),
       invoice_status: /✔|V|已開|開立/.test(String(row.invoice || "")) ? "issued" : "pending",
       invoice_number: textOrEmpty(row.invoice) || null,
       row_status: numericMoney(row.paidAmount) ? "paid" : row.manualStatus === "nonbillable" ? "ignored" : "open",
@@ -1524,6 +1547,12 @@
       window.addEventListener("online", () => {
         if (queue.size) flush().catch(() => {});
       });
+      window.addEventListener("focus", () => {
+        if (queue.size) flush().catch(() => {});
+      });
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && queue.size) flush().catch(() => {});
+      });
       window.addEventListener("beforeunload", (event) => {
         if (!queue.size && !flushPromise) return;
         event.preventDefault();
@@ -1554,6 +1583,7 @@
 
   window.HJ_DB = {
     normalizeCustomerNo,
+    normalizePaymentDateForDb: paymentDateForDb,
     getClient,
     getSession,
     ensureSession,

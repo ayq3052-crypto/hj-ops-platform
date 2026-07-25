@@ -24,6 +24,9 @@ on public.page_saved_state for update to authenticated using (true) with check (
 
 grant select, insert, update on public.page_saved_state to authenticated;
 
+alter table public.audit_logs
+  add column if not exists actor_auth_id uuid;
+
 create or replace function public.capture_operational_revision()
 returns trigger
 language plpgsql
@@ -53,14 +56,16 @@ begin
     new_data,
     changed_fields,
     actor_id,
+    actor_auth_id,
     notes
   ) values (
     tg_table_name,
     target_id,
-    lower(tg_op),
+    upper(tg_op),
     old_json,
     new_json,
     changed,
+    null,
     auth.uid(),
     'automatic operational revision'
   );
