@@ -103,6 +103,14 @@
     return `${customerNo}|p${period}|${start.westernYear}-${start.month}-${start.day}|${end.westernYear}-${end.month}-${end.day}`;
   }
 
+  function contractIdentityKey(row) {
+    const customerNo = normalizeCustomerNo(row?.id || row?.customerNo || row?.customer_no);
+    const start = parseDate(row?.start || row?.contractStart || row?.contract_start);
+    const end = parseDate(row?.end || row?.contractEnd || row?.contract_end);
+    if (!customerNo || !start || !end) return "";
+    return `${customerNo}|${start.westernYear}-${start.month}-${start.day}|${end.westernYear}-${end.month}-${end.day}`;
+  }
+
   function projectCyclesToYearShells(venueData, currentYear = new Date().getFullYear()) {
     if (!venueData?.years || typeof venueData.years !== "object") return venueData;
     const years = venueData.years;
@@ -111,14 +119,17 @@
     });
     const sources = [];
     const seen = new Set();
+    const seenContractIdentities = new Set();
     Object.entries(years).forEach(([sourceYear, rows]) => {
       (rows || []).forEach((row) => {
         if ((row?.folder || "active") === "ended") return;
         if (![states.HISTORICAL, states.CONFIRMED].includes(inferState(row, sourceYear, currentYear))) return;
         const key = cycleKey(row);
-        if (!key || seen.has(key)) return;
+        const identityKey = contractIdentityKey(row);
+        if (!key || !identityKey || seen.has(key) || seenContractIdentities.has(identityKey)) return;
         seen.add(key);
-        sources.push({ row, sourceYear, key });
+        seenContractIdentities.add(identityKey);
+        sources.push({ row, sourceYear, key, identityKey });
       });
     });
     sources.forEach(({ row }) => {
@@ -129,8 +140,13 @@
     });
     Object.keys(years).forEach((targetYear) => {
       const existingKeys = new Set((years[targetYear] || []).map(cycleKey).filter(Boolean));
-      sources.forEach(({ row, sourceYear, key }) => {
-        if (String(sourceYear) === String(targetYear) || existingKeys.has(key)) return;
+      const existingContractIdentities = new Set((years[targetYear] || []).map(contractIdentityKey).filter(Boolean));
+      sources.forEach(({ row, sourceYear, key, identityKey }) => {
+        if (
+          String(sourceYear) === String(targetYear)
+          || existingKeys.has(key)
+          || existingContractIdentities.has(identityKey)
+        ) return;
         if (row?.isCurrentContract === false) return;
         if (!coveredYears(row).includes(Number(targetYear))) return;
         years[targetYear].push({
@@ -140,6 +156,7 @@
           projectionSourceYear: String(sourceYear),
         });
         existingKeys.add(key);
+        existingContractIdentities.add(identityKey);
       });
     });
     return venueData;
