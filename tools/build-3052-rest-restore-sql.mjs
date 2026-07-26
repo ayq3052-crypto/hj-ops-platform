@@ -29,16 +29,29 @@ const dollarQuotedJson = (json, seed) => {
 };
 
 const manifest = JSON.parse(await readFile(path.join(sourceDirectory, "manifest.json"), "utf8"));
-if (manifest.format !== "hj-3052-rest-backup-v2") {
-  throw new Error("只有 v2 備份含有可獨立還原的資料表結構");
+if (!["hj-3052-rest-backup-v2", "hj-3052-rest-backup-v3"].includes(manifest.format)) {
+  throw new Error("只有 v2／v3 備份含有可獨立還原的資料表結構");
 }
+
+const schemaObjects = manifest.format === "hj-3052-rest-backup-v3"
+  ? JSON.parse(await readFile(path.join(sourceDirectory, manifest.schema.fileName), "utf8"))
+  : [];
+const definitionsFor = (kind) => schemaObjects
+  .filter((object) => object.kind === kind)
+  .map((object) => String(object.definition || "").trim())
+  .filter(Boolean);
+const terminatedDefinitionsFor = (kind) => definitionsFor(kind)
+  .map((definition) => definition.endsWith(";") ? definition : `${definition};`);
 
 const lines = [
   "\\set ON_ERROR_STOP on",
   "begin;",
+  "set local check_function_bodies = off;",
   "drop schema if exists public cascade;",
   "create schema public;",
 ];
+
+lines.push(...terminatedDefinitionsFor("sequence"));
 
 for (const table of manifest.tables) {
   const columns = table.columns.map((column) => {
@@ -74,11 +87,34 @@ for (const constraintType of ["p", "u", "c", "f"]) {
   }
 }
 
+lines.push(...terminatedDefinitionsFor("function"));
+
+for (const table of manifest.tables) {
+  for (const column of table.columns) {
+    const defaultExpression = String(column.defaultExpression || "").trim();
+    if (!defaultExpression) continue;
+    if (defaultExpression.includes(";")) {
+      throw new Error(`${table.tableName}.${column.name} 的預設值內容不安全`);
+    }
+    lines.push(
+      `alter table ${qualifiedTable(table.tableName)} ` +
+      `alter column ${quoteIdentifier(column.name)} set default ${defaultExpression};`,
+    );
+  }
+}
+
+lines.push(...terminatedDefinitionsFor("index"));
+lines.push(...terminatedDefinitionsFor("view"));
+
 for (const table of manifest.tables) {
   if (table.rowSecurity) {
     lines.push(`alter table ${qualifiedTable(table.tableName)} enable row level security;`);
   }
 }
+
+lines.push(...terminatedDefinitionsFor("policy"));
+lines.push(...terminatedDefinitionsFor("trigger"));
+lines.push(...terminatedDefinitionsFor("grant"));
 
 lines.push("commit;");
 await writeFile(outputFile, `${lines.join("\n\n")}\n`, { mode: 0o600 });
