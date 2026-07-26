@@ -551,6 +551,9 @@
       snoozeUntil: textOrEmpty(metadata.snooze_until || metadata.snoozeUntil),
       followNote: textOrEmpty(metadata.follow_note || metadata.followNote),
       messages: [{ label, body: row.body || "" }],
+      persistedDraft: true,
+      persistedStatus: dbStatus,
+      renewalEventKey: textOrEmpty(metadata.renewal_event_key),
     };
   };
 
@@ -1291,6 +1294,7 @@
     const keys = new Set();
     if (fallbackId) keys.add(String(fallbackId));
     if (metadata.source_id) keys.add(String(metadata.source_id));
+    if (metadata.renewal_event_key) keys.add(String(metadata.renewal_event_key));
     const fallbackYear = Number(metadata.source_year) || 2026;
     (Array.isArray(metadata.payment_refs) ? metadata.payment_refs : []).forEach((ref) => {
       const canonicalKey = paymentRefKey(ref, fallbackYear);
@@ -1327,6 +1331,7 @@
       payment_refs: paymentRefs,
       lastNotifiedAt: notifiedDate,
       last_notified_at: notifiedDate,
+      ...(textOrEmpty(item.renewalEventKey) ? { renewal_event_key: textOrEmpty(item.renewalEventKey) } : {}),
     };
     const itemKeys = draftKeysFromMetadata(itemMetadata, item.id);
     const { data, error } = await client.from("message_drafts").select("id,branch_id,metadata");
