@@ -663,6 +663,44 @@ function isClosingSection(section) {
   return String(section || "").startsWith("待遷出");
 }
 
+function customerWorkflowKey(venue, id) {
+  const normalizedVenue = String(venue || "").trim();
+  const normalizedId = normalizeCustomerId(id);
+  return normalizedVenue && normalizedId ? `${normalizedVenue}|${normalizedId}` : "";
+}
+
+function closingCustomerWorkflowKeys() {
+  const keys = new Set();
+  const yearState = readPaymentYearState();
+  venueKeys.forEach((venue) => {
+    const years = new Set([
+      String(initialPaymentYear),
+      String(activeYear),
+      ...(yearState.years?.[venue] || []),
+      ...scanStoredPaymentYears(venue),
+    ]);
+    years.forEach((yearValue) => {
+      const year = Number(normalizeYear(yearValue));
+      monthLabels.forEach((month) => {
+        storedPaymentRowsFor(venue, month, year).forEach((row) => {
+          if (!isClosingSection(row?.section)) return;
+          const key = customerWorkflowKey(venue, row?.id);
+          if (key) keys.add(key);
+        });
+      });
+    });
+  });
+  return keys;
+}
+
+function draftBelongsToClosingCustomer(item, closingKeys) {
+  if (!closingKeys?.size) return false;
+  return (item?.paymentRefs || []).some((ref) => {
+    const key = customerWorkflowKey(ref?.venue || item?.venue, ref?.id);
+    return key ? closingKeys.has(key) : false;
+  });
+}
+
 function isNonBillableRow(row) {
   if (row.paidDate || row.paidAmount || isClosingSection(row.section)) return false;
   if (row.manualStatus === "normal") return false;
@@ -1450,13 +1488,19 @@ function buildAutoDraftItems(year = activeYear) {
 
 function refreshDraftItems() {
   paymentRowsCache = new Map();
+  const closingKeys = closingCustomerWorkflowKeys();
   const normalizedManual = dedupeManualDraftItems(
     manualDraftItems
       .filter(manualDraftIsLive)
       .map(normalizeManualDraftItem)
-      .filter(Boolean),
+      .filter((item) => item && !draftBelongsToClosingCustomer(item, closingKeys)),
   );
-  draftItems = collapseRenewalEvents([...normalizedManual, ...buildAutoDraftItems(activeYear)]);
+  const generated = buildAutoDraftItems(activeYear)
+    .filter((item) => !draftBelongsToClosingCustomer(item, closingKeys));
+  draftItems = collapseRenewalEvents([...normalizedManual, ...generated]);
+  if (selectedDraftId && !draftItems.some((item) => item.id === selectedDraftId)) {
+    selectedDraftId = null;
+  }
 }
 
 function rowHasPaidAmount(row) {
