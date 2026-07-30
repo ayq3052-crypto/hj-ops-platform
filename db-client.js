@@ -980,6 +980,19 @@
     };
   };
 
+  const paymentRowIdentity = (row) => {
+    const snapshot = row?.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
+    const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const rowKey = textOrEmpty(snapshot._rowKey || row?._rowKey);
+    if (rowKey) return `key:${rowKey}`;
+    return [
+      normalizeCustomerNo(row?.customer_no ?? row?.id),
+      textOrEmpty(row?.payment_cycle ?? row?.cycle).toUpperCase(),
+      textOrEmpty(metadata.start || snapshot.start || row?.start),
+      textOrEmpty(metadata.end || snapshot.end || row?.end),
+    ].join("|");
+  };
+
   const syncPaymentRows = async (key, rows) => {
     const context = parsePaymentStorageKey(key);
     if (!context || !Array.isArray(rows)) return;
@@ -1015,19 +1028,7 @@
     if (existingError) throw existingError;
 
     const existingById = new Map((existingRows || []).map((row) => [textOrEmpty(row.id), row]));
-    const identityFor = (row) => {
-      const snapshot = row?.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
-      const metadata = row?.metadata && typeof row.metadata === "object" ? row.metadata : {};
-      const rowKey = textOrEmpty(snapshot._rowKey);
-      if (rowKey) return `key:${rowKey}`;
-      return [
-        normalizeCustomerNo(row.customer_no),
-        textOrEmpty(row.payment_cycle).toUpperCase(),
-        textOrEmpty(metadata.start || snapshot.start),
-        textOrEmpty(metadata.end || snapshot.end),
-      ].join("|");
-    };
-    const existingIdentities = new Set((existingRows || []).map(identityFor));
+    const existingIdentities = new Set((existingRows || []).map(paymentRowIdentity));
     const allowedDirtyFields = new Set([
       "section",
       "name",
@@ -1127,7 +1128,7 @@
         expectedUpdates.push({ id: dbId, patch });
         continue;
       }
-      const identity = identityFor(payload);
+      const identity = paymentRowIdentity(payload);
       if (existingIdentities.has(identity)) continue;
       const { error: insertError } = await client.from("payment_month_rows").insert(payload);
       if (insertError) throw insertError;
@@ -1149,7 +1150,7 @@
       assertFieldsMatch(saved, patch, Object.keys(patch), "繳費表");
     });
     expectedInsertIdentities.forEach(({ identity, payload }) => {
-      const saved = (verifiedRows || []).find((row) => identityFor(row) === identity);
+      const saved = (verifiedRows || []).find((row) => paymentRowIdentity(row) === identity);
       if (!saved) throw new Error(`繳費表新增後找不到資料列 ${payload.customer_no || ""}`);
       assertFieldsMatch(saved, payload, [
         "section",
@@ -1171,6 +1172,50 @@
       updated: expectedUpdates.length,
       inserted: expectedInsertIdentities.length,
     };
+  };
+
+  const verifyPaymentRowTargets = async (targets = []) => {
+    const expectedTargets = Array.isArray(targets) ? targets.filter(Boolean) : [];
+    if (!expectedTargets.length) return { verified: true, targets: 0 };
+
+    const client = await getClient();
+    const branches = await getBranches();
+    const grouped = new Map();
+
+    expectedTargets.forEach((target) => {
+      const venue = normalizeVenue(target?.venue);
+      const branch = branches.byCode[venue];
+      const year = Number(target?.year);
+      const month = monthNumber(target?.month);
+      if (!branch || !Number.isFinite(year) || !month) {
+        throw new Error("繳費表寫入驗證缺少館別或年月");
+      }
+      const key = `${branch.id}|${year}|${month}`;
+      if (!grouped.has(key)) grouped.set(key, { branch, venue, year, month, targets: [] });
+      grouped.get(key).targets.push(target);
+    });
+
+    for (const group of grouped.values()) {
+      const { data, error } = await client
+        .from("payment_month_rows")
+        .select("id,customer_no,payment_cycle,source_snapshot,metadata")
+        .eq("branch_id", group.branch.id)
+        .eq("year", group.year)
+        .eq("month", group.month);
+      if (error) throw error;
+
+      const identities = new Set((data || []).map(paymentRowIdentity));
+      group.targets.forEach((target) => {
+        const identity = paymentRowIdentity(target.row);
+        if (identities.has(identity)) return;
+        const customerNo = normalizeCustomerNo(target?.row?.customer_no ?? target?.row?.id);
+        throw new Error(
+          `繳費表寫入後找不到 ${group.venue} ${group.year}/${String(group.month).padStart(2, "0")} ${customerNo}`,
+        );
+      });
+    }
+
+    return { verified: true, targets: expectedTargets.length };
   };
 
   const syncDraftEdits = async (edits) => {
@@ -1594,6 +1639,7 @@
   window.HJ_DB = {
     normalizeCustomerNo,
     normalizePaymentDateForDb: paymentDateForDb,
+    verifyPaymentRowTargets,
     getClient,
     getSession,
     ensureSession,

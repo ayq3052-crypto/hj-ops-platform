@@ -23,6 +23,7 @@ class MockElement {
 function makeContext() {
   const values = new Map();
   const elements = new Map();
+  const verifiedTargets = [];
   const document = {
     head: new MockElement(),
     querySelector(selector) {
@@ -60,7 +61,15 @@ function makeContext() {
     addEventListener() {}, requestAnimationFrame(fn) { fn(); },
     setTimeout(fn) { fn(); return 1; }, clearTimeout() {},
     confirm() { return false; }, document, localStorage, lucide: { createIcons() {} },
+    HJ_DB: {
+      async flushPendingWrites() { return { verified: true, pending: 0 }; },
+      async verifyPaymentRowTargets(targets) {
+        verifiedTargets.push(...targets);
+        return { verified: true, targets: targets.length };
+      },
+    },
   };
+  context.__verifiedTargets = verifiedTargets;
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(new URL("../ops/payments.js", import.meta.url), "utf8"), context, { filename: "ops/payments.js" });
@@ -116,21 +125,54 @@ function evalIn(context, source) {
   prepare();
   const before = JSON.stringify(context.localStorage.dump());
   context.window.confirm = () => false;
-  evalIn(context, `addCustomerToCurrentMonth()`);
+  await evalIn(context, `addCustomerToCurrentMonth()`);
   assert.equal(JSON.stringify(context.localStorage.dump()), before, "cancelled preview must not write");
+  assert.equal(context.__verifiedTargets.length, 0, "cancelled preview must not perform DB readback");
 
   prepare();
   context.window.confirm = () => true;
-  evalIn(context, `addCustomerToCurrentMonth()`);
+  await evalIn(context, `addCustomerToCurrentMonth()`);
   assert.equal(evalIn(context, `loadPaymentRows("taichung","7月",2026).filter(row=>row.id==="300").length`), 1);
   assert.equal(evalIn(context, `loadPaymentRows("taichung","8月",2026).filter(row=>row.id==="300").length`), 1);
   assert.equal(evalIn(context, `loadPaymentRows("taichung","9月",2026).filter(row=>row.id==="300").length`), 1);
-  assert.equal(evalIn(context, `loadPaymentRows("taichung","10月",2026).filter(row=>row.id==="300").length`), 0, "expiry month must not be generated");
+  assert.equal(evalIn(context, `loadPaymentRows("taichung","10月",2026).filter(row=>row.id==="300").length`), 1, "expiry month should retain one renewal reminder");
+  assert.equal(evalIn(context, `loadPaymentRows("taichung","10月",2026).filter(row=>row.id==="300").every(row => /合約到期|先確認續約/.test(row.note || ""))`), true, "expiry row must be a renewal reminder");
+  assert.equal(evalIn(context, `loadPaymentRows("taichung","10月",2026).filter(row=>row.id==="300").every(row => !(row.paidDate || row.paidAmount))`), true, "renewal reminder must not guess payment data");
+  assert.deepEqual(
+    context.__verifiedTargets.map((target) => `${target.year}/${target.month}/${target.row.id}`),
+    ["2026/7月/300", "2026/8月/300", "2026/9月/300", "2026/10月/300"],
+    "every newly generated month must be included in DB readback verification",
+  );
 
   const afterFirst = JSON.stringify(context.localStorage.dump());
   prepare();
-  evalIn(context, `addCustomerToCurrentMonth()`);
+  await evalIn(context, `addCustomerToCurrentMonth()`);
   assert.equal(JSON.stringify(context.localStorage.dump()), afterFirst, "repeated confirmed add must be idempotent");
+  assert.equal(context.__verifiedTargets.length, 4, "repeated add must not create or verify duplicate targets");
+}
+
+{
+  const context = makeContext();
+  context.__crm = { 編號: "301", 姓名: "讀回失敗", 公司: "讀回失敗測試", 項目: "營登", 繳費方式: "Y", 起始日期: "115/07/01", 合約到期日: "116/07/01", 金額: "1800/m", _source: "web-crm-formal" };
+  evalIn(context, `
+    activeVenue="taichung"; activeYear=2026; activeMonth="7月"; paymentRows=loadPaymentRows(activeVenue,activeMonth,activeYear);
+    fillNewCustomerFromCrm(__crm);
+    setCrmCheckState("found", "found", "found", __crm);
+    renderAll=()=>{};
+    showToast=(message)=>{globalThis.__toast=message};
+  `);
+  context.window.confirm = () => true;
+  context.window.HJ_DB.verifyPaymentRowTargets = async () => {
+    throw new Error("readback missing");
+  };
+  await evalIn(context, `addCustomerToCurrentMonth()`);
+  assert.match(context.__toast, /尚未存成功/, "failed DB readback must show a visible save failure");
+  assert.equal(context.document.querySelector("#newCustomerId").value, "301", "failed DB readback must keep the operator form open");
+  assert.equal(
+    evalIn(context, `loadPaymentRows("taichung","7月",2026).filter(row=>row.id==="301").length`),
+    1,
+    "failed DB readback must retain the unsaved row for retry instead of clearing it",
+  );
 }
 
 console.log("payment safe smart import: OK");
@@ -141,6 +183,7 @@ console.log("payment safe smart import: OK");
   assert.ok(syncBlock.includes('.from("payment_month_rows")'), "payment sync table must be explicit");
   assert.equal(syncBlock.includes(".delete()"), false, "payment sync must never delete a whole month");
   assert.ok(syncBlock.includes("existingIdentities.has(identity)"), "payment sync must skip existing rows");
+  assert.ok(dbSource.includes("const verifyPaymentRowTargets"), "payment DB writes must have exact target readback verification");
 }
 
 console.log("payment formal sync delete guard: OK");

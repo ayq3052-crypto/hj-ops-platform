@@ -1596,10 +1596,19 @@ function savePaymentRows() {
   saveRowsFor(activeVenue, activeMonth, paymentRows, activeYear);
 }
 
-async function confirmPaymentRowsSaved() {
+async function confirmPaymentRowsSaved(expectedTargets = []) {
+  const targets = Array.isArray(expectedTargets) ? expectedTargets.filter(Boolean) : [];
   const flush = window.HJ_DB?.flushPendingWrites;
-  if (typeof flush !== "function") return { verified: false, isolated: true };
-  return flush();
+  if (typeof flush !== "function") {
+    if (targets.length) throw new Error("資料庫寫入驗證功能尚未就緒");
+    return { verified: false, isolated: true };
+  }
+  const flushed = await flush();
+  if (!targets.length) return flushed;
+  const verify = window.HJ_DB?.verifyPaymentRowTargets;
+  if (typeof verify !== "function") throw new Error("資料庫寫入讀回驗證功能尚未就緒");
+  const verifiedTargets = await verify(targets);
+  return { ...flushed, ...verifiedTargets };
 }
 
 async function savePaymentRowsConfirmed() {
@@ -3051,16 +3060,26 @@ async function addCustomerToCurrentMonth() {
     return;
   }
 
+  const expectedSaveTargets = [];
   if (!isRenewalImport) {
     paymentRows.push(newRow);
     paymentRows = normalizeSectionGroups(paymentRows);
     selectedRowIndex = paymentRows.findIndex((row) => row._rowKey === newRow._rowKey);
     savePaymentRows();
+    expectedSaveTargets.push({
+      venue: activeVenue,
+      year: activeYear,
+      month: activeMonth,
+      row: newRow,
+    });
   }
   let created = 0;
   plan.candidates.forEach((candidate) => {
     ensurePaymentYearExists(candidate.venue, candidate.year);
-    if (addGeneratedRowToMonth(candidate.venue, candidate.month, candidate.row, candidate.year)) created += 1;
+    if (addGeneratedRowToMonth(candidate.venue, candidate.month, candidate.row, candidate.year)) {
+      created += 1;
+      expectedSaveTargets.push(candidate);
+    }
   });
   if (reminderPlan.candidate) {
     ensurePaymentYearExists(reminderPlan.candidate.venue, reminderPlan.candidate.year);
@@ -3069,11 +3088,14 @@ async function addCustomerToCurrentMonth() {
       reminderPlan.candidate.month,
       reminderPlan.candidate.row,
       reminderPlan.candidate.year,
-    )) created += 1;
+    )) {
+      created += 1;
+      expectedSaveTargets.push(reminderPlan.candidate);
+    }
   }
   runPaymentAudit("payment-smart-import-after", { venue: activeVenue, year: activeYear });
   try {
-    await confirmPaymentRowsSaved();
+    await confirmPaymentRowsSaved(expectedSaveTargets);
   } catch (error) {
     showPaymentSaveFailure(error);
     return;
