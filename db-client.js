@@ -461,7 +461,12 @@
 
   const paymentDbRowToLegacy = (row) => {
     const snapshot = row.source_snapshot && typeof row.source_snapshot === "object" ? row.source_snapshot : {};
-    const manualStatus = snapshot.manualStatus || snapshot.manual_status || (row.row_status === "ignored" ? "nonbillable" : "");
+    const metadata = row.metadata && typeof row.metadata === "object" ? row.metadata : {};
+    const manualStatus =
+      snapshot.manualStatus ||
+      snapshot.manual_status ||
+      metadata.manual_status ||
+      (row.row_status === "ignored" ? "nonbillable" : "");
     const dbCycle = textOrEmpty(row.payment_cycle);
     const snapshotCycle = textOrEmpty(snapshot.cycle);
     const cycle = dbCycle && dbCycle.toLowerCase() !== "custom" ? dbCycle : snapshotCycle || dbCycle;

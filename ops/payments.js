@@ -428,10 +428,10 @@ async function fetchCrmRows(venue = activeVenue) {
 }
 
 function readCrmRowsSync(venue = activeVenue) {
+  const formalRows = readBundledCrmRows(venue);
   const bridgeRows = readPaymentBridgeRows(venue);
   const webRows = readWebCrmRows(venue);
-  const localRows = readBundledCrmRows(venue);
-  return mergeCrmRows(bridgeRows, webRows, localRows).filter(hasUsefulCrmData);
+  return mergeCrmRows(formalRows, bridgeRows, webRows).filter(hasUsefulCrmData);
 }
 
 function crmCompanyName(item) {
@@ -509,13 +509,7 @@ function readWebCrmRows(venue = activeVenue) {
 }
 
 function readBundledCrmRows(venue = activeVenue) {
-  const legacyRows = Array.isArray(window.hjCrmSourceData?.rows?.[venue]) ? window.hjCrmSourceData.rows[venue] : [];
-  const source = window.HJ_CRM_SOURCE_DATA || window.hjCrmSourceData;
-  const years = source?.venues?.[venue]?.years;
-  const bundledRows = years && typeof years === "object"
-    ? Object.entries(years).flatMap(([year, yearRows]) => (yearRows || []).filter((row) => isPaymentEligibleCrmRow(row, year)).map((row) => ({ ...row, _crmYear: year })))
-    : [];
-  return [...legacyRows, ...bundledRows]
+  const normalizeRows = (rows, sourceLabel) => rows
     .filter((row) => isPaymentEligibleCrmRow(row, row._crmYear))
     .map((row) => ({
       編號: String(row?.編號 || row?.id || "").trim(),
@@ -529,9 +523,28 @@ function readBundledCrmRows(venue = activeVenue) {
       階段金額: String(row?.階段金額 || row?.pricePlan || row?.stagedAmount || "").trim(),
       ...crmStructuredPricingFields(row),
       ...crmCycleFields(row, row._crmYear),
-      _source: "bundled-crm",
+      _source: sourceLabel,
     }))
     .filter((row) => row.編號 || row.公司名稱 || row.姓名);
+
+  const formalYears = window.HJ_CRM_SOURCE_DATA?.venues?.[venue]?.years;
+  const formalRows = formalYears && typeof formalYears === "object"
+    ? Object.entries(formalYears).flatMap(([year, yearRows]) => (yearRows || []).map((row) => ({ ...row, _crmYear: year })))
+    : [];
+
+  const fallbackSource = window.hjCrmSourceData === window.HJ_CRM_SOURCE_DATA ? null : window.hjCrmSourceData;
+  const fallbackYears = fallbackSource?.venues?.[venue]?.years;
+  const fallbackYearRows = fallbackYears && typeof fallbackYears === "object"
+    ? Object.entries(fallbackYears).flatMap(([year, yearRows]) => (yearRows || []).map((row) => ({ ...row, _crmYear: year })))
+    : [];
+  const legacyRows = Array.isArray(fallbackSource?.rows?.[venue])
+    ? fallbackSource.rows[venue].map((row) => ({ ...row, _crmYear: row?._crmYear || row?.year || 0 }))
+    : [];
+
+  return mergeCrmRows(
+    normalizeRows(formalRows, "web-crm-formal"),
+    normalizeRows([...fallbackYearRows, ...legacyRows], "bundled-crm"),
+  );
 }
 
 function mergeCrmRows(...rowGroups) {
@@ -743,13 +756,25 @@ function crmMatchScore(item, id, name, company) {
   return score;
 }
 
+function crmSourcePriority(item) {
+  if (item?._source === "web-crm-formal") return 4;
+  if (item?._source === "web-crm-bridge") return 3;
+  if (item?._source === "web-crm") return 2;
+  if (item?._source === "bundled-crm") return 1;
+  return 0;
+}
+
 function findCrmMatch(rows, id, name, company) {
   return rows
     .filter((item) => crmMatchesInput(item, id, name, company))
     .sort((a, b) => {
       const scoreDiff = crmMatchScore(b, id, name, company) - crmMatchScore(a, id, name, company);
       if (scoreDiff !== 0) return scoreDiff;
-      return crmPeriodIndex(b, "起始日期") - crmPeriodIndex(a, "起始日期");
+      const startDiff = crmPeriodIndex(b, "起始日期") - crmPeriodIndex(a, "起始日期");
+      if (startDiff !== 0) return startDiff;
+      const sourceDiff = crmSourcePriority(b) - crmSourcePriority(a);
+      if (sourceDiff !== 0) return sourceDiff;
+      return crmPeriodIndex(b, "合約到期日") - crmPeriodIndex(a, "合約到期日");
     })[0];
 }
 
@@ -819,9 +844,11 @@ function findRenewalCrmMatch(rows, row) {
     })
     .filter((item) => isNewerCrmPeriod(item, row))
     .sort((a, b) => {
-      const sourceDiff = (b?._source === "web-crm-bridge" ? 1 : 0) - (a?._source === "web-crm-bridge" ? 1 : 0);
+      const startDiff = crmPeriodIndex(b, "起始日期") - crmPeriodIndex(a, "起始日期");
+      if (startDiff !== 0) return startDiff;
+      const sourceDiff = crmSourcePriority(b) - crmSourcePriority(a);
       if (sourceDiff !== 0) return sourceDiff;
-      return crmPeriodIndex(b, "起始日期") - crmPeriodIndex(a, "起始日期");
+      return crmPeriodIndex(b, "合約到期日") - crmPeriodIndex(a, "合約到期日");
     })[0];
 }
 
@@ -829,11 +856,11 @@ function findLatestCrmMatch(rows, row) {
   return rows
     .filter((item) => crmMatchesInput(item, row.id, row.name, row.company))
     .sort((a, b) => {
-      const sourceDiff = (b?._source === "web-crm-bridge" ? 1 : 0) - (a?._source === "web-crm-bridge" ? 1 : 0);
-      if (sourceDiff !== 0) return sourceDiff;
       const startDiff = crmPeriodIndex(b, "起始日期") - crmPeriodIndex(a, "起始日期");
       if (startDiff !== 0) return startDiff;
-      return crmPeriodIndex(b, "合約到期日") - crmPeriodIndex(a, "合約到期日");
+      const endDiff = crmPeriodIndex(b, "合約到期日") - crmPeriodIndex(a, "合約到期日");
+      if (endDiff !== 0) return endDiff;
+      return crmSourcePriority(b) - crmSourcePriority(a);
     })[0];
 }
 
@@ -1126,8 +1153,13 @@ function saveRowsFor(venue, month, rows, year = activeYear) {
   ensurePaymentYearExists(venue, year);
   const baseRows = baseRowsFor(venue, month, year);
   const cleanedRows = collapseDuplicateCustomerPeriods(
-    removeSameMonthRenewalDuplicates(
-      removeSupersededGeneratedContractRows(repairSavedRows(rows, baseRows, venue, month, year), venue),
+    removeStaleGeneratedFutureRows(
+      removeSameMonthRenewalDuplicates(
+        removeSupersededGeneratedContractRows(repairSavedRows(rows, baseRows, venue, month, year), venue),
+        venue,
+        month,
+        year,
+      ),
       venue,
       month,
       year,
@@ -1254,7 +1286,12 @@ function loadPaymentRows(venue = activeVenue, month = activeMonth, year = active
       const repaired = ensureRowKeys(
         normalizeSectionGroups(
           collapseDuplicateCustomerPeriods(
-            removeSameMonthRenewalDuplicates(repairSavedRows(saved, baseRows, venue, month, year), venue, month, year),
+            removeStaleGeneratedFutureRows(
+              removeSameMonthRenewalDuplicates(repairSavedRows(saved, baseRows, venue, month, year), venue, month, year),
+              venue,
+              month,
+              year,
+            ),
           ),
         ),
         venue,
@@ -1271,7 +1308,14 @@ function loadPaymentRows(venue = activeVenue, month = activeMonth, year = active
       });
       const rows = ensureRowKeys(
         normalizeSectionGroups(
-          collapseDuplicateCustomerPeriods(removeSameMonthRenewalDuplicates(merged, venue, month, year)),
+          collapseDuplicateCustomerPeriods(
+            removeStaleGeneratedFutureRows(
+              removeSameMonthRenewalDuplicates(merged, venue, month, year),
+              venue,
+              month,
+              year,
+            ),
+          ),
         ),
         venue,
         month,
@@ -1299,8 +1343,13 @@ function loadBackfillSourceRows(venue = activeVenue, month = activeMonth, year =
       const savedRows = ensureRowKeys(
         normalizeSectionGroups(
           collapseDuplicateCustomerPeriods(
-            removeSameMonthRenewalDuplicates(
-              repairSavedRows(saved, baseRows, venue, month, year),
+            removeStaleGeneratedFutureRows(
+              removeSameMonthRenewalDuplicates(
+                repairSavedRows(saved, baseRows, venue, month, year),
+                venue,
+                month,
+                year,
+              ),
               venue,
               month,
               year,
@@ -1336,7 +1385,132 @@ function sameCustomerLoose(row, id, company) {
 function isAutoGeneratedPaymentRow(row) {
   const key = String(row?._rowKey || "");
   const note = String(row?.note || "");
-  return key.includes("|auto-next|") || /由.+?(新增|新循環|續約|既有資料)自動帶入/.test(note);
+  return key.includes("|auto-next|")
+    || /由.+?(新增|新循環|續約|既有資料)(?:自動)?帶入/.test(note)
+    || /測試版 V2 由 2026 真實資料與 CRM 新循環帶入/.test(note);
+}
+
+function isGeneratedPaymentMemo(note) {
+  const normalized = String(note || "").normalize("NFKC").trim().replace(/[，,；;]/g, " ");
+  return (normalized.startsWith("合約到期") && normalized.includes("先確認續約"))
+    || normalized.startsWith("測試版")
+    || /由.+?(新增|新循環|續約|既有資料)(?:自動)?帶入/.test(normalized)
+    || normalized.startsWith("新辦")
+    || normalized.startsWith("新循環");
+}
+
+function hasManualPaymentEvidence(row) {
+  if (String(row?.paidDate || "").trim()) return true;
+  if (String(row?.paidAmount || "").trim()) return true;
+  if (row?.invoice === true) return true;
+  const invoice = String(row?.invoice || "").normalize("NFKC").trim().toLowerCase();
+  if (invoice && !["false", "0", "否", "未開"].includes(invoice)) return true;
+
+  const status = String(row?.manualStatus || "").normalize("NFKC").trim().toLowerCase();
+  if (status && !["normal", "open", "pending", "unpaid", "待收款", "確認續約", "測試", "一般收款"].includes(status)) {
+    return true;
+  }
+
+  const note = String(row?.note || "").trim();
+  return Boolean(note && !isGeneratedPaymentMemo(note));
+}
+
+function crmPeriodForPaymentRow(item) {
+  return {
+    id: normalizeCustomerId(item?.編號).toUpperCase(),
+    start: normalizeComparableDate(item?.起始日期),
+    end: normalizeComparableDate(item?.合約到期日),
+    cycle: normalizeCycleForSelect(item?.繳費方式),
+  };
+}
+
+function paymentRowPeriod(row) {
+  return {
+    id: normalizeCustomerId(row?.id).toUpperCase(),
+    start: normalizeComparableDate(row?.start),
+    end: normalizeComparableDate(row?.end),
+    cycle: normalizeCycleForSelect(row?.cycle),
+  };
+}
+
+function samePaymentContractPeriod(left, right) {
+  return Boolean(
+    left?.id
+      && right?.id
+      && left.id === right.id
+      && left.start
+      && left.start === right.start
+      && left.end
+      && left.end === right.end
+      && left.cycle
+      && left.cycle === right.cycle
+  );
+}
+
+function samePaymentContractDates(left, right) {
+  return Boolean(
+    left?.id
+      && right?.id
+      && left.id === right.id
+      && left.start
+      && left.start === right.start
+      && left.end
+      && left.end === right.end
+  );
+}
+
+function generatedRowContractMonthRelation(row, month = activeMonth, year = activeYear) {
+  const target = sheetMonthAbsoluteIndex(month, year);
+  const start = parseMinguoMonthIndex(row?.start);
+  const end = parseMinguoMonthIndex(row?.end);
+  if (target === null || start === null || end === null) return "unknown";
+  if (target < start) return "before-contract";
+  if (target > end) return "after-contract";
+  return "inside-contract";
+}
+
+function removeStaleGeneratedFutureRows(rows, venue = activeVenue, month = activeMonth, year = activeYear) {
+  if (Number(year) < 2027) return rows;
+
+  const crmPeriodsByCustomer = new Map();
+  readCrmRowsSync(venue).forEach((item) => {
+    const period = crmPeriodForPaymentRow(item);
+    if (!period.id) return;
+    const periods = crmPeriodsByCustomer.get(period.id) || [];
+    periods.push(period);
+    crmPeriodsByCustomer.set(period.id, periods);
+  });
+
+  const exactSupportedCustomers = new Set();
+  rows.forEach((row) => {
+    const period = paymentRowPeriod(row);
+    const crmPeriods = crmPeriodsByCustomer.get(period.id) || [];
+    if (crmPeriods.some((crmPeriod) => samePaymentContractPeriod(period, crmPeriod))) {
+      exactSupportedCustomers.add(period.id);
+    }
+  });
+
+  return rows.filter((row) => {
+    if (!isAutoGeneratedPaymentRow(row) || hasManualPaymentEvidence(row)) return true;
+
+    const period = paymentRowPeriod(row);
+    const crmPeriods = crmPeriodsByCustomer.get(period.id) || [];
+    const hasExactCrmPeriod = crmPeriods.some((crmPeriod) => samePaymentContractPeriod(period, crmPeriod));
+    const hasSameDatesCrmPeriod = crmPeriods.some((crmPeriod) => samePaymentContractDates(period, crmPeriod));
+    const relation = generatedRowContractMonthRelation(row, month, year);
+
+    if (relation === "before-contract" || relation === "after-contract") return false;
+    if (!hasExactCrmPeriod && hasSameDatesCrmPeriod) return false;
+    if (!hasExactCrmPeriod && exactSupportedCustomers.has(period.id)) return false;
+
+    const normalizedSection = String(row?.section || "").trim();
+    const annualCycle = isAnnualBillingCycle(period.cycle);
+    if (relation === "unknown" && annualCycle && normalizedSection !== "自由座" && !hasExactCrmPeriod) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function crmContractSupersedesRow(item, row) {
@@ -1510,6 +1684,7 @@ function isClosedClosingRow(row) {
 
 function manualStatusForRow(row) {
   if (isClosingSection(row?.section)) return isClosedClosingRow(row) ? "closed" : "closing";
+  if (row?.manualStatus === "done") return "done";
   return isNonBillableRow(row) ? "nonbillable" : "normal";
 }
 
@@ -1524,6 +1699,9 @@ function getStatus(row) {
   }
   if (isNonBillableRow(row)) {
     return { key: "nonbillable", label: "不收款" };
+  }
+  if (row.manualStatus === "done") {
+    return { key: "done", label: "完成" };
   }
   if (isContractConfirmationRow(row)) {
     return { key: "renewal", label: "確認續約" };
@@ -1691,6 +1869,10 @@ function renderRows() {
       .join(" ");
     item.classList.toggle("selected", index === selectedRowIndex);
     item.dataset.rowIndex = index;
+    const statusMarkup =
+      status.key === "renewal" && row.paidDate && row.paidAmount && row.invoice
+        ? `<button type="button" class="sheet-status sheet-status-button renewal" data-complete-renewal-row="${index}" title="點此將舊循環標記為完成">${status.label}</button>`
+        : `<b class="sheet-status ${status.key}">${status.label}</b>`;
     item.innerHTML = `
       <span>${escapeHtml(row.id)}</span>
       <span>${escapeHtml(row.name)}</span>
@@ -1704,7 +1886,7 @@ function renderRows() {
       <span>${escapeHtml(row.nextDate)}</span>
       <span>${row.invoice ? "✔️" : ""}</span>
       <span class="status-note-cell">
-        <b class="sheet-status ${status.key}">${status.label}</b>
+        ${statusMarkup}
         <em>${escapeHtml(displayNote(row))}</em>
       </span>
     `;
@@ -1786,6 +1968,7 @@ function hasFutureNextPayment(row, month = activeMonth, year = activeYear) {
 
 function isContractConfirmationRow(row, month = activeMonth, year = activeYear) {
   if (!row || isClosingSection(row.section) || isNonBillableRow(row)) return false;
+  if (row.manualStatus === "done") return false;
   if (row.renewalProcessed) return false;
   if (hasEstablishedFollowingCycle(row)) return false;
   if (hasContractConfirmationNote(row)) return true;
@@ -1808,7 +1991,6 @@ function hasEstablishedFollowingCycle(row, venue = activeVenue) {
           (customerId && normalizeCustomerId(candidate?.id) === customerId) ||
           (company && String(candidate?.company || "").trim() === company);
         if (!sameCustomer) return false;
-        if (hasContractConfirmationNote(candidate)) return false;
         const candidateStart = parseCompleteValidRocDate(candidate?.start);
         if (!candidateStart) return false;
         const followsOldCycle =
@@ -3586,10 +3768,41 @@ function bindEvents() {
     paymentPointerStart = null;
   });
 
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const suggestion = event.target.closest("[data-closing-match-index]");
     if (suggestion) {
       moveOrSelectClosingMatch(closingLookupMatches[Number(suggestion.dataset.closingMatchIndex)]);
+      return;
+    }
+
+    const completionButton = event.target.closest("[data-complete-renewal-row]");
+    if (completionButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const rowIndex = Number(completionButton.dataset.completeRenewalRow);
+      const rowToComplete = paymentRows[rowIndex];
+      if (!rowToComplete || !rowToComplete.paidDate || !rowToComplete.paidAmount || !rowToComplete.invoice) {
+        showToast("需先填收款日、實收金額並勾選發票");
+        return;
+      }
+      const previousManualStatus = rowToComplete.manualStatus;
+      rowToComplete.manualStatus = "done";
+      markPaymentRowDbDirty(rowToComplete, "manualStatus");
+      try {
+        await savePaymentRowsConfirmed();
+        renderMetrics();
+        renderRows();
+        renderEditor();
+        showToast(`${rowToComplete.id} 舊循環已完成`);
+      } catch (error) {
+        rowToComplete.manualStatus = previousManualStatus;
+        markPaymentRowDbDirty(rowToComplete, "manualStatus");
+        savePaymentRows();
+        renderMetrics();
+        renderRows();
+        renderEditor();
+        showPaymentSaveFailure(error);
+      }
       return;
     }
 

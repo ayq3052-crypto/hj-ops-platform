@@ -2696,6 +2696,13 @@ svg {
   white-space: nowrap;
 }
 
+.sheet-status-button {
+  appearance: none;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+
 .sheet-status.done {
   border-color: #a7e3b6;
   background: var(--green-soft);
