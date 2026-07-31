@@ -817,11 +817,10 @@ function renewalPlanLines(plan) {
 
 function replaceRenewalPlanSection(body, plan) {
   const text = String(body || "");
-  const sectionPattern = /(📌\s*[^：:\n]*續約[^：:\n]*方案\s*[：:])[\s\S]*?(💡\s*請回覆您的續約方式\s*[：:])/;
-  const section = text.match(sectionPattern);
-  if (!section) return text;
-  const replacement = `${section[1]}\n${renewalPlanLines(plan)}\n\n${section[2]}`;
-  return text.replace(sectionPattern, () => replacement);
+  const nextBlock = "💡 請回覆您的續約方式：";
+  const replacement = `📌 續約方案：\n${renewalPlanLines(plan)}\n\n${nextBlock}`;
+  if (!text.includes("📌 續約方案：") || !text.includes(nextBlock)) return text;
+  return text.replace(/📌 續約方案：[\s\S]*?💡 請回覆您的續約方式：/, replacement);
 }
 
 function isRenewalDraftMessage(item, message) {
