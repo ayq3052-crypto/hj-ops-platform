@@ -1462,6 +1462,11 @@
     let timer = null;
     let flushPromise = null;
     let lastState = "idle";
+    const isSyncedStorageKey = (key) => Boolean(
+      parsePaymentStorageKey(key)
+      || key === "hjDraftMessageEditsV1"
+      || savedPageStateKeys.has(key)
+    );
 
     const renderSaveState = (state, detail = "") => {
       lastState = state;
@@ -1521,19 +1526,25 @@
     };
 
     const loadOutbox = () => {
+      let cleaned = false;
       try {
         const saved = JSON.parse(localStorage.getItem(outboxStorageKey) || "{}");
         Object.entries(saved && typeof saved === "object" ? saved : {}).forEach(([key, value]) => {
-          if (
-            typeof value === "string"
-            && (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1" || savedPageStateKeys.has(key))
-          ) {
+          if (typeof value !== "string" || !isSyncedStorageKey(key)) {
+            cleaned = true;
+            return;
+          }
+          if (localStorage.getItem(key) === value) {
             queue.set(key, value);
+          } else {
+            cleaned = true;
           }
         });
       } catch (error) {
-        console.warn("Pending write outbox could not be read", error);
+        cleaned = true;
+        console.warn("[HJ DB] 無法讀取待同步佇列", error);
       }
+      if (cleaned) persistOutbox();
     };
 
     const flush = async () => {
@@ -1558,7 +1569,7 @@
         if (errors.length) {
           renderSaveState("error", errors.map(({ key, error }) => `${key}: ${error?.message || error}`).join("\n"));
           window.clearTimeout(timer);
-          timer = window.setTimeout(flush, 5000);
+          timer = null;
           const failure = new Error("資料尚未全部存入資料庫，已保留待重試");
           failure.causes = errors;
           throw failure;
@@ -1586,30 +1597,18 @@
     Storage.prototype.setItem = function setItemWithDbSync(key, value) {
       originalSetItem.call(this, key, value);
       if (this !== localStorage) return;
-      if (parsePaymentStorageKey(key) || key === "hjDraftMessageEditsV1" || savedPageStateKeys.has(key)) {
+      if (isSyncedStorageKey(key)) {
         queueWrite(key, value);
       }
     };
 
     loadOutbox();
-    if (queue.size) {
-      renderSaveState("saving");
-      timer = window.setTimeout(() => {
-        flush().catch(() => {});
-      }, 0);
-    }
     if (typeof window.addEventListener === "function") {
       window.addEventListener("online", () => {
         if (queue.size) flush().catch(() => {});
       });
-      window.addEventListener("focus", () => {
-        if (queue.size) flush().catch(() => {});
-      });
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && queue.size) flush().catch(() => {});
-      });
       window.addEventListener("beforeunload", (event) => {
-        if (!queue.size && !flushPromise) return;
+        if (!flushPromise) return;
         event.preventDefault();
         event.returnValue = "仍有資料尚未存入資料庫";
       });
