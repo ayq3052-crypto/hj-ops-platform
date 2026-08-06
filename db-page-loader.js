@@ -8,7 +8,7 @@
       "./ops/payment-audit-engine.js?v=20260725-formal-swap-1",
       "./ops/payments.js?v=20260730-payment-readback-1",
     ],
-    drafts: ["./ops/drafts.js?v=20260726-renewal-event-1"],
+    drafts: ["./ops/drafts.js?v=20260806-renewal-bucket-1"],
   };
 
   const statusText = {

@@ -8,7 +8,7 @@ const statusLabels = {
   today: "今日該貼",
   follow: "已貼待追",
   upcoming: "本月預備",
-  "needs-check": "需確認",
+  "needs-check": "續約詢問",
 };
 
 const draftTestMode = document.body?.dataset.draftTest === "1" || document.documentElement?.dataset.draftTest === "1";
@@ -828,22 +828,22 @@ function isRenewalDraftMessage(item, message) {
 }
 
 function draftActionForItem(item, status = effectiveStatus(item)) {
-  if (status === "needs-check" || String(item?.kind || "").includes("待確認")) {
-    return {
-      label: "需確認",
-      detail: "資料不夠直接貼，先確認公司、金額、日期或服務項目。",
-    };
-  }
-  if (String(item?.kind || "").includes("續約") && status === "follow") {
+  if (isRenewalDraftItem(item) && status === "follow") {
     return {
       label: "續約待回覆",
       detail: "已貼續約通知，等客戶回覆或下一步合約。",
     };
   }
-  if (String(item?.kind || "").includes("續約")) {
+  if (isRenewalDraftItem(item)) {
     return {
       label: "續約詢問",
       detail: "合約快到期，先問客戶是否續約與選哪個方案。",
+    };
+  }
+  if (status === "needs-check" || String(item?.kind || "").includes("待確認")) {
+    return {
+      label: "需確認",
+      detail: "資料不夠直接貼，先確認公司、金額、日期或服務項目。",
     };
   }
   if (status === "follow") {
@@ -1536,8 +1536,16 @@ function effectiveStatus(item) {
   return "follow";
 }
 
+// 續約草稿集中在同一個畫面分類；實際通知/付款狀態仍保留原值。
+// 已完成付款的草稿維持 done，不可因為是續約而重新出現。
+function displayStatus(item) {
+  const status = effectiveStatus(item);
+  if (status === "done") return status;
+  return isRenewalDraftItem(item) ? "needs-check" : status;
+}
+
 function visibleStatusItems(status = activeStatus) {
-  return draftItems.filter((item) => Number(item.year || initialPaymentYear) === Number(activeYear) && effectiveStatus(item) === status);
+  return draftItems.filter((item) => Number(item.year || initialPaymentYear) === Number(activeYear) && displayStatus(item) === status);
 }
 
 function noticeSummary(item) {
@@ -1577,7 +1585,7 @@ function visibleDrafts() {
   return draftItems.filter(
     (item) =>
       Number(item.year || initialPaymentYear) === Number(activeYear) &&
-      effectiveStatus(item) === activeStatus &&
+      displayStatus(item) === activeStatus &&
       item.venue === activeVenue &&
       item.month === activeMonth,
   );
@@ -1587,7 +1595,7 @@ function countByStatus(status) {
   return draftItems.filter(
     (item) =>
       Number(item.year || initialPaymentYear) === Number(activeYear) &&
-      effectiveStatus(item) === status &&
+      displayStatus(item) === status &&
       item.venue === activeVenue &&
       item.month === activeMonth,
   ).length;
@@ -1785,6 +1793,7 @@ function renderReader() {
   }
 
   const currentStatus = effectiveStatus(item);
+  const currentDisplayStatus = displayStatus(item);
   const isComplete = currentStatus === "done";
 
   reader.innerHTML = `
@@ -1797,7 +1806,7 @@ function renderReader() {
         ${renderTestClassification(item, currentStatus)}
       </div>
       <div class="draft-reader-actions">
-        <span class="mini-pill">${escapeHtml(statusLabels[currentStatus] || "已完成")}</span>
+        <span class="mini-pill">${escapeHtml(statusLabels[currentDisplayStatus] || "已完成")}</span>
         <button class="notice-button" type="button" data-mark-notified="${item.id}" ${isComplete ? "disabled" : ""}>
           <i data-lucide="${isComplete ? "circle-check" : "send"}"></i>
           <span>${isComplete ? "繳費已完成" : "已貼通知"}</span>

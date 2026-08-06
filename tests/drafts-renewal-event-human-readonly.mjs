@@ -148,6 +148,63 @@ await page.goto(`${baseUrl}/drafts.html`, { waitUntil: "domcontentloaded" });
 await page.waitForFunction(() => document.querySelectorAll("#draftYearSelect option").length > 0);
 await page.waitForFunction(() => !document.querySelector("#dbLoadState"));
 
+if (process.env.HJ_RENEWAL_BUCKET_ONLY === "1") {
+  const result = await page.evaluate(() => {
+    const items = eval("draftItems");
+    const liveRenewals = items.filter((item) => isRenewalDraftItem(item) && effectiveStatus(item) !== "done");
+    const wrongBuckets = liveRenewals
+      .filter((item) => displayStatus(item) !== "needs-check")
+      .map((item) => ({ id: item.id, status: effectiveStatus(item), displayStatus: displayStatus(item) }));
+    const paymentNoticesChanged = items
+      .filter((item) => !isRenewalDraftItem(item) && effectiveStatus(item) !== "done")
+      .filter((item) => displayStatus(item) !== effectiveStatus(item))
+      .map((item) => ({ id: item.id, status: effectiveStatus(item), displayStatus: displayStatus(item) }));
+
+    const payableRenewal = liveRenewals.find((item) => item.paymentRefs?.length);
+    let paymentCompletion = null;
+    if (payableRenewal) {
+      const changedRows = [];
+      payableRenewal.paymentRefs.forEach((ref) => {
+        const rows = paymentRowsFor(ref.venue || payableRenewal.venue, ref.month || payableRenewal.month, ref.year || payableRenewal.year);
+        rows
+          .filter((row) => normalizePaymentValue(row.id) === normalizePaymentValue(ref.id))
+          .forEach((row) => {
+            changedRows.push({ row, paidAmount: row.paidAmount });
+            row.paidAmount = "1";
+          });
+      });
+      paymentCompletion = {
+        customerNo: payableRenewal.customerNo,
+        status: effectiveStatus(payableRenewal),
+        displayStatus: displayStatus(payableRenewal),
+      };
+      changedRows.forEach(({ row, paidAmount }) => {
+        row.paidAmount = paidAmount;
+      });
+      paymentRowsCache = new Map();
+    }
+
+    return {
+      label: document.querySelector('[data-draft-filter="needs-check"] span')?.textContent?.trim(),
+      liveRenewalCount: liveRenewals.length,
+      wrongBuckets,
+      paymentNoticesChanged,
+      paymentCompletion,
+    };
+  });
+
+  assert.equal(result.label, "續約詢問");
+  assert.ok(result.liveRenewalCount > 0, "formal data must include at least one live renewal card");
+  assert.deepEqual(result.wrongBuckets, [], "all live renewal cards must be grouped under renewal inquiry");
+  assert.deepEqual(result.paymentNoticesChanged, [], "payment notice buckets must remain unchanged");
+  assert.ok(result.paymentCompletion, "formal data must include a payable renewal card");
+  assert.equal(result.paymentCompletion.status, "done");
+  assert.equal(result.paymentCompletion.displayStatus, "done");
+  console.log(JSON.stringify({ ...result, formalWrites: 0 }, null, 2));
+  await browser.close();
+  process.exit(0);
+}
+
 if (process.env.HJ_DRAFT_DEBUG === "1") {
   console.log(JSON.stringify(await page.evaluate(() =>
     eval("draftItems")
