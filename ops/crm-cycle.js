@@ -111,6 +111,57 @@
     return `${customerNo}|${start.westernYear}-${start.month}-${start.day}|${end.westernYear}-${end.month}-${end.day}`;
   }
 
+  function dateRank(value) {
+    const parsed = parseDate(value);
+    if (!parsed) return 0;
+    return parsed.westernYear * 10000 + parsed.month * 100 + parsed.day;
+  }
+
+  function currentRowPriority(row) {
+    const state = explicitState(row) || states.HISTORICAL;
+    const stateRank = state === states.CONFIRMED ? 2 : state === states.HISTORICAL ? 1 : 0;
+    const confirmedAt = Date.parse(text(row?.confirmedAt || row?.confirmed_at)) || 0;
+    return [
+      row?.isCurrentContract === true ? 1 : 0,
+      stateRank,
+      contractPeriod(row) || 0,
+      dateRank(row?.start || row?.contractStart || row?.contract_start),
+      dateRank(row?.end || row?.contractEnd || row?.contract_end),
+      confirmedAt,
+    ];
+  }
+
+  function hasHigherCurrentPriority(candidate, current) {
+    const candidatePriority = currentRowPriority(candidate);
+    const currentPriority = currentRowPriority(current);
+    for (let index = 0; index < candidatePriority.length; index += 1) {
+      if (candidatePriority[index] !== currentPriority[index]) {
+        return candidatePriority[index] > currentPriority[index];
+      }
+    }
+    return false;
+  }
+
+  function selectCurrentRows(rows) {
+    if (!Array.isArray(rows)) return [];
+    const selected = new Map();
+    rows.forEach((row, index) => {
+      const customerNo = normalizeCustomerNo(row?.id || row?.customerNo || row?.customer_no);
+      const key = customerNo || `__unidentified_${index}`;
+      const current = selected.get(key);
+      if (!current) {
+        selected.set(key, { row, index });
+        return;
+      }
+      if (hasHigherCurrentPriority(row, current.row)) {
+        selected.set(key, { row, index: current.index });
+      }
+    });
+    return [...selected.values()]
+      .sort((left, right) => left.index - right.index)
+      .map(({ row }) => row);
+  }
+
   function projectCyclesToYearShells(venueData, currentYear = new Date().getFullYear()) {
     if (!venueData?.years || typeof venueData.years !== "object") return venueData;
     const years = venueData.years;
@@ -139,9 +190,21 @@
       });
     });
     Object.keys(years).forEach((targetYear) => {
-      const existingKeys = new Set((years[targetYear] || []).map(cycleKey).filter(Boolean));
-      const existingContractIdentities = new Set((years[targetYear] || []).map(contractIdentityKey).filter(Boolean));
+      const allTargetRows = years[targetYear] || [];
+      const confirmedTargetRows = (years[targetYear] || []).filter((row) => (
+        [states.HISTORICAL, states.CONFIRMED].includes(inferState(row, targetYear, currentYear))
+      ));
+      const allExistingKeys = new Set(allTargetRows.map(cycleKey).filter(Boolean));
+      const allExistingContractIdentities = new Set(allTargetRows.map(contractIdentityKey).filter(Boolean));
+      const confirmedExistingKeys = new Set(confirmedTargetRows.map(cycleKey).filter(Boolean));
+      const confirmedExistingContractIdentities = new Set(confirmedTargetRows.map(contractIdentityKey).filter(Boolean));
       sources.forEach(({ row, sourceYear, key, identityKey }) => {
+        const sourceState = inferState(row, sourceYear, currentYear);
+        const mayReplaceFutureLegacy = sourceState === states.CONFIRMED && Number(targetYear) >= Number(currentYear);
+        const existingKeys = mayReplaceFutureLegacy ? confirmedExistingKeys : allExistingKeys;
+        const existingContractIdentities = mayReplaceFutureLegacy
+          ? confirmedExistingContractIdentities
+          : allExistingContractIdentities;
         if (
           String(sourceYear) === String(targetYear)
           || existingKeys.has(key)
@@ -155,8 +218,10 @@
           isProjection: true,
           projectionSourceYear: String(sourceYear),
         });
-        existingKeys.add(key);
-        existingContractIdentities.add(identityKey);
+        allExistingKeys.add(key);
+        allExistingContractIdentities.add(identityKey);
+        confirmedExistingKeys.add(key);
+        confirmedExistingContractIdentities.add(identityKey);
       });
     });
     return venueData;
@@ -215,6 +280,7 @@
     hasStarted,
     coveredYears,
     cycleKey,
+    selectCurrentRows,
     projectCyclesToYearShells,
     sameContract,
     renewalDraftFrom,

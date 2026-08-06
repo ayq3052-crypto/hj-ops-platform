@@ -235,10 +235,11 @@ function getRows(venue = activeVenue, year = activeYear) {
 }
 
 function getFolderRows(folder = activeFolder) {
-  return getRows().filter((row) => {
+  const eligibleRows = getRows().filter((row) => {
     if (["legacy_generated", "invalidated", "draft"].includes(row.cycleState)) return false;
     return (row.folder || "active") === folder;
   });
+  return window.HJCrmCycle?.selectCurrentRows?.(eligibleRows) || eligibleRows;
 }
 
 function serviceType(row) {

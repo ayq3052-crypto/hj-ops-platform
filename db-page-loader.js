@@ -1,7 +1,7 @@
 (() => {
   const pageScripts = {
     crm: ["./ops/roc-date.js?v=20260725-formal-swap-1", "./ops/payment-audit-engine.js?v=20260725-formal-swap-1", "./app.js?v=20260725-formal-swap-1"],
-    contracts: ["./contracts.js?v=20260725-formal-swap-1"],
+    contracts: ["./contracts.js?v=20260806-contract-current-cycle-1"],
     payments: [
       "./ops/roc-date.js?v=20260725-formal-swap-1",
       "./ops/contract-pricing.js?v=20260725-formal-swap-1",
